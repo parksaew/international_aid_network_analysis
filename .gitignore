@@ -1,10 +1,9 @@
 .Rproj.user/
 .Rhistory
 .Rdata
-.Rproj.user
-.txt
-.dta
-.tab
-.csv
 .RdataTmp
-.xlsx
+*.txt
+*.dta
+*.tab
+*.csv
+*.xlsx
