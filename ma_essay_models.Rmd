@@ -1,0 +1,2641 @@
+---
+title: "ma_essay_models"
+author: "SaewonPark"
+date: "December 18, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+pacman::p_load(tidyverse,
+               countrycode,
+               haven,
+               readxl,
+               plm,
+               corrplot,
+               lmtest,
+               multiwayvcov,
+               car,
+               stargazer,
+               jtools,
+               dynsim)
+
+lag <- dplyr::lag
+
+```
+
+
+Set-up for regression models
+
+Dec 29 - limited data to 1995 - 2014
+due to coverage
+```{r}
+
+#pdata frame
+mergepdata4 <- pdata.frame(select(mergedata4,
+                                  -c(disaster_aid_com_corr_1,
+                                     econ_capacity_aid_com_corr_1,
+                                     other_aid_com_corr_1,
+                                     production_aid_com_corr_1,
+                                     program_aid_com_corr_1,
+                                     social_aid_com_corr_1,
+                                     democracy_aid_disb_corr_1,
+                                     disaster_aid_disb_corr_1,
+                                     econ_capacity_aid_disb_corr_1,
+                                     other_aid_disb_corr_1,
+                                     production_aid_disb_corr_1,
+                                     program_aid_disb_corr_1,
+                                     social_aid_disb_corr_1,
+                                     disaster_aid_com_corr_1_lag,
+                                     econ_capacity_aid_com_corr_1_lag,
+                                     other_aid_com_corr_1_lag,
+                                     production_aid_com_corr_1_lag,
+                                     program_aid_com_corr_1_lag,
+                                     social_aid_com_corr_1_lag,
+                                     democracy_aid_disb_corr_1_lag,
+                                     disaster_aid_disb_corr_1_lag,
+                                     econ_capacity_aid_disb_corr_1_lag,
+                                     other_aid_disb_corr_1_lag,
+                                     production_aid_disb_corr_1_lag,
+                                     program_aid_disb_corr_1_lag,
+                                     social_aid_disb_corr_1_lag,
+                                     r_pop_notlogged_1,
+                                     r_politychange_1,
+                                     r_democracy_1,
+                                     r_gdp_growth_1,
+                                     r_gdp_1,
+                                     r_population_1,
+                                     r_democratization_1,
+                                     r_gdplog_1,
+                                     r_democracy_sq_1,
+                                     d_pop_notlogged_1,
+                                     d_gdp_1,
+                                     d_population_1,
+                                     d_consumer_inflation_1,
+                                     d_women_parliament_1,
+                                     d_gdplog_1,
+                                     r_pop_notlogged_1_lag,
+                                     r_politychange_1_lag,
+                                     r_democracy_1_lag,
+                                     r_gdp_growth_1_lag,
+                                     r_gdp_1_lag,
+                                     r_population_1_lag,
+                                     r_democratization_1_lag,
+                                     r_gdplog_1_lag,
+                                     r_democracy_sq_1_lag,
+                                     d_pop_notlogged_1_lag,
+                                     d_gdp_1_lag,
+                                     d_population_1_lag,
+                                     d_consumer_inflation_1_lag,
+                                     d_women_parliament_1_lag,
+                                     d_gdplog_1_lag,
+                                     ptasum_1,
+                                     ptacount_1,
+                                     r_unemployment_1,
+                                     d_unemployment_1,
+                                     unempdiff_1,
+                                     immigration_1,
+                                     naturalization_1,
+                                     rtod_export_1,
+                                     dtor_export_1,
+                                     log_rtod_export_1,
+                                     log_dtor_export_1,
+                                     military_aid_corr_1,
+                                     ptasum_1_lag,
+                                     ptacount_1_lag,
+                                     r_unemployment_1_lag,
+                                     d_unemployment_1_lag,
+                                     unempdiff_1_lag,
+                                     immigration_1_lag,
+                                     naturalization_1_lag,
+                                     rtod_export_1_lag,
+                                     dtor_export_1_lag,
+                                     log_rtod_export_1_lag,
+                                     log_dtor_export_1_lag,
+                                     military_aid_corr_1_lag)) %>%
+                             filter(year > 1994),
+           index = c("ccode1", "ccode2"))
+#this has all the variables
+#dec 29 - removed some duplicate variables
+```
+
+
+correlation
+```{r}
+corrvar <- select(mergepdata4 %>%
+                  ungroup(),
+                  democracy_aid_com_corr,
+                  ipdiff, 
+                  ipfd, 
+                  r_conflict_prioryear,
+                  r_politychange,
+                  r_democracy,
+                  #r_democratization,
+                  r_gdp_growth,
+                  d_gdp_growth,
+                  r_gdplog, 
+                  d_gdplog,
+                  r_population,
+                  d_population,
+                  d_women_parliament,
+                  comlang_off,
+                  colony,
+                  distlog,
+                  ptacount,
+                  ptasum,
+                  r_unemployment,
+                  d_unemployment,
+                  unempdiff,
+                  log_immigration,
+                  log_naturalization,
+                  log_rtod_export,
+                  log_dtor_export,
+                  other_aid_com_corr,
+                  military_aid_corr)
+
+corr_tbl <- cor(corrvar, use = "complete.obs")
+
+# png(filename="corrplot.png",
+#     units="in", 
+#     width=9, 
+#     height=9, 
+#     res=144)
+corrplot(corr_tbl, method = "number")
+# dev.off()
+
+
+# immigration is correlated with naturalization: 0.71
+  # it is even lower in the full sample of just immigration data (0.5)
+  # if I regress two variables that are correlated, I will get a significant result but without a theory, it doesn't matter as much
+
+# I also look at VIF in the bottom
+```
+
+
+
+
+
+
+```{r}
+#descriptive stats
+stargazer(as.data.frame(corrvar),
+          type = "latex",
+          header = F,
+          covariate.labels = c("Democracy Aidflow (per 1000, logged)",
+                               "Ideal Point Difference",
+                               "Change in Ideal Point Difference",
+                               "Conflict, Prior Year, R",
+                               "Democratization (ord), R",
+                               #"Democratization (dummy), R",
+                               "Democracy (ord), R",
+                               "GDP growth, R",
+                               "GDP growth, D",
+                               "GDP (logged), R",
+                               "GDP (logged), D",
+                               "Population (logged), R",
+                               "Population (logged), D",
+                               "Women in Parliament (Percent), D",
+                               "Common Official Lang.",
+                               "Past Colonial Relationship",
+                               "Distance (km, logged)",
+                               "# of PTAs",
+                               "Cumulative Sum PTAs",
+                               #"Military Intervention (dummy)",
+                               "Unemployment Rate, R",
+                               "Unemployment Rate, D",
+                               "Unemployment Difference",
+                               "Immigration (logged), R to D",
+                               "Naturalization (logged), R to D",
+                               "Export (logged), R to D",
+                               "Export (logged), D to R",
+                               "US Military Aid (per 1000, logged)",
+                               "Other Economic Aid (per 1000, logged)"),
+          title = "Descriptive Statistics, 1995 - 2014")
+
+
+
+```
+
+
+**Dec 29
+I think maybe I should remove GDP growth and make democratization binary
+
+
+Base Model
+```{r}
+#all covariates lagged 1
+
+base_m <- lm(democracy_aid_com_corr ~ 
+               log_naturalization_lag +
+                ipdiff_5 + 
+                #ipfd_5+
+                r_conflict_prioryear +
+                r_politychange_lag +
+                r_democracy_lag +
+                r_democracy_sq_lag +
+                r_gdp_growth_lag +
+                d_gdp_growth_lag +
+                r_gdplog_lag +
+                d_gdplog_lag +
+                r_population_lag +
+                d_population_lag +
+                d_women_parliament_lag +
+                comlang_off+
+                colony +
+                distlog+
+                ptacount_lag +
+                unempdiff_lag +
+                #log_naturalization_roll_lag +
+                #naturalization_prop_lag +
+                log_rtod_export_lag +
+                log_dtor_export_lag +
+                ccode1 + 
+                ccode2 + 
+                as.factor(year), 
+              data = mergepdata4,
+              na.action = na.omit)
+
+#summary(base_m)
+
+options(scipen = 999)
+base_m_hc3 <- coeftest(base_m, cluster.vcov(base_m,
+                                            cluster = cbind(mergepdata4$ccode1, mergepdata4$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T))#[-(22:nrow(summary(base_m)$coefficients)),]; base_m_hc3
+
+#naturalization survives despite hc3-two way clustered errors
+#democracy (+sq) and democratization were significant and in the correct direction *without* clustered errors
+
+#even with immigration included in the model, naturalization survives, although the vif for immigration and naturalization are high (7-8)
+
+#rolling sum (5 year) of naturalization proportional to population is in the right direction but it is not significant (p is around 0.3)
+
+  # however, it is very significant and holds the right direction when it is not proportional to population
+  # when proportinal to pop, it is very small and not logged
+
+
+```
+
+
+
+```{r}
+#base model with other aid types 
+
+base_m_aid <- lm(democracy_aid_com_corr ~ 
+                   log_naturalization_lag +
+                   ipdiff_5 + 
+                #ipfd_5+
+                r_conflict_prioryear +
+                r_politychange_lag +
+                r_democracy_lag +
+                r_democracy_sq_lag +
+                r_gdp_growth_lag +
+                d_gdp_growth_lag +
+                r_gdplog_lag +
+                d_gdplog_lag +
+                r_population_lag +
+                d_population_lag +
+                d_women_parliament_lag +
+                comlang_off+
+                colony +
+                distlog+
+                ptacount_lag +
+                unempdiff_lag +
+                #log_immigration_lag +
+                log_rtod_export_lag +
+                log_dtor_export_lag +
+                other_economic_aid_lag +
+                military_aid_corr_lag +
+                ccode1 + 
+                ccode2 + 
+                as.factor(year), 
+              data = mergepdata4,
+              na.action = na.omit)
+
+#summary(base_m_aid)
+
+#all aid except for military aid affects democracy aid (positively)
+
+base_m_aid_hc3 <- coeftest(base_m_aid, cluster.vcov(base_m_aid,
+                                            cluster = cbind(mergepdata4$ccode1, mergepdata4$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T))#[-(24:nrow(summary(base_m_aid)$coefficients)),]; base_m_aid_hc3
+
+#naturalization survives with hc3 and two way clusters
+
+```
+
+pre 2001 
+```{r}
+
+mergepdata4_pre <- mergepdata4 %>%
+  filter(year < 2002)
+
+#base model with other aid types 
+
+base_m_aid_pre <- lm(democracy_aid_com_corr ~ 
+                   log_naturalization_lag +
+                   ipdiff_5 + 
+                #ipfd_5+
+                r_conflict_prioryear +
+                r_politychange_lag +
+                r_democracy_lag +
+                r_democracy_sq_lag +
+                r_gdp_growth_lag +
+                d_gdp_growth_lag +
+                r_gdplog_lag +
+                d_gdplog_lag +
+                r_population_lag +
+                d_population_lag +
+                d_women_parliament_lag +
+                comlang_off+
+                colony +
+                distlog+
+                ptacount_lag +
+                unempdiff_lag +
+                #log_immigration_lag +
+                log_rtod_export_lag +
+                log_dtor_export_lag +
+                other_economic_aid_lag +
+                military_aid_corr_lag +
+                ccode1 + 
+                ccode2 + 
+                as.factor(year), 
+              data = mergepdata4_pre,
+              na.action = na.omit)
+
+#summary(base_m_aid)
+
+#all aid except for military aid affects democracy aid (positively)
+
+base_m_aid_pre_hc3 <- coeftest(base_m_aid_pre, cluster.vcov(base_m_aid_pre,
+                                            cluster = cbind(mergepdata4_pre$ccode1, mergepdata4_pre$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T))#[-(24:nrow(summary(base_m_aid_pre)$coefficients)),]; base_m_aid_pre_hc3
+
+#naturalization survives with hc3 and two way clusters before 2001
+
+```
+
+post 2001
+```{r}
+
+mergepdata4_post <- mergepdata4 %>%
+  filter(year > 2001)
+
+#base model with other aid types 
+
+base_m_aid_post <- lm(democracy_aid_com_corr ~ 
+                   log_naturalization_lag +
+                   ipdiff_5 + 
+                #ipfd_5+
+                r_conflict_prioryear +
+                r_politychange_lag +
+                r_democracy_lag +
+                r_democracy_sq_lag +
+                r_gdp_growth_lag +
+                d_gdp_growth_lag +
+                r_gdplog_lag +
+                d_gdplog_lag +
+                r_population_lag +
+                d_population_lag +
+                d_women_parliament_lag +
+                comlang_off+
+                colony +
+                distlog+
+                ptacount_lag +
+                unempdiff_lag +
+                #log_immigration_lag +
+                log_rtod_export_lag +
+                log_dtor_export_lag +
+                other_economic_aid_lag +
+                military_aid_corr_lag +
+                ccode1 + 
+                ccode2 + 
+                as.factor(year), 
+              data = mergepdata4_post,
+              na.action = na.omit)
+
+#summary(base_m_aid)
+
+#all aid except for military aid affects democracy aid (positively)
+
+base_m_aid_post_hc3 <- coeftest(base_m_aid_post, cluster.vcov(base_m_aid_post,
+                                            cluster = cbind(mergepdata4_post$ccode1, mergepdata4_post$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T))#[-(24:nrow(summary(base_m_aid_post)$coefficients)),]; base_m_aid_post_hc3
+
+#naturalization survives with hc3 and two way clusters before 2001
+
+```
+
+
+without irq (645) or afgh (700)
+
+```{r}
+
+mergepdata4_out <- mergepdata4 %>%
+  filter(!(ccode2 %in% c(645, 700)))
+
+#base model with other aid types 
+
+base_m_aid_out <- lm(democracy_aid_com_corr ~ 
+                   log_naturalization_lag +
+                   ipdiff_5 + 
+                #ipfd_5+
+                r_conflict_prioryear +
+                r_politychange_lag +
+                r_democracy_lag +
+                r_democracy_sq_lag +
+                r_gdp_growth_lag +
+                d_gdp_growth_lag +
+                r_gdplog_lag +
+                d_gdplog_lag +
+                r_population_lag +
+                d_population_lag +
+                d_women_parliament_lag +
+                comlang_off+
+                colony +
+                distlog+
+                ptacount_lag +
+                unempdiff_lag +
+                #log_immigration_lag +
+                log_rtod_export_lag +
+                log_dtor_export_lag +
+                other_economic_aid_lag +
+                military_aid_corr_lag +
+                ccode1 + 
+                ccode2 + 
+                as.factor(year), 
+              data = mergepdata4_out,
+              na.action = na.omit)
+
+#summary(base_m_aid)
+
+#all aid except for military aid affects democracy aid (positively)
+
+base_m_aid_out_hc3 <- coeftest(base_m_aid_out, cluster.vcov(base_m_aid_out,
+                                            cluster = cbind(mergepdata4_out$ccode1, mergepdata4_out$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T))#[-(24:nrow(summary(base_m_aid_out)$coefficients)),]; base_m_aid_out_hc3
+
+#naturalization survives with hc3 and two way clusters after 2001
+
+```
+
+
+without outliers that were found in influence plot
+France (220), Netherlands (210), Austria (305), Japan (740)
+Qatar (694), Bhutan (760), Cape Verde (402), China (710)
+
+```{r}
+
+mergepdata4_out2 <- mergepdata4 %>%
+  filter(!(ccode1 %in% c(220, 210, 305, 740) | ccode2 %in% c(694, 760, 402, 710)))
+
+#base model with other aid types 
+
+base_m_aid_out2 <- lm(democracy_aid_com_corr ~ 
+                   log_naturalization_lag +
+                   ipdiff_5 + 
+                #ipfd_5+
+                r_conflict_prioryear +
+                r_politychange_lag +
+                r_democracy_lag +
+                r_democracy_sq_lag +
+                r_gdp_growth_lag +
+                d_gdp_growth_lag +
+                r_gdplog_lag +
+                d_gdplog_lag +
+                r_population_lag +
+                d_population_lag +
+                d_women_parliament_lag +
+                comlang_off+
+                colony +
+                distlog+
+                ptacount_lag +
+                unempdiff_lag +
+                #log_immigration_lag +
+                log_rtod_export_lag +
+                log_dtor_export_lag +
+                other_economic_aid_lag +
+                military_aid_corr_lag +
+                ccode1 + 
+                ccode2 + 
+                as.factor(year), 
+              data = mergepdata4_out2,
+              na.action = na.omit)
+
+#summary(base_m_aid)
+
+#all aid except for military aid affects democracy aid (positively)
+
+base_m_aid_out2_hc3 <- coeftest(base_m_aid_out2, cluster.vcov(base_m_aid_out2,
+                                            cluster = cbind(mergepdata4_out2$ccode1, mergepdata4_out2$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T))#[-(24:nrow(summary(base_m_aid_out2)$coefficients)),]; base_m_aid_out2_hc3
+
+#naturalization survives with hc3 and two way clusters when outliers are removed
+
+# I think it's better to just include the first outlier model since I don't really have a way to explain this
+
+```
+
+
+
+Latex tables
+```{r}
+
+diagnostics <- c("R-squared", "F-stat", "Obs.")
+
+fit.base <- summary(base_m, diagnostics = T)
+fit.base_aid <- summary(base_m_aid, diagnostics = T)
+fit.pre <- summary(base_m_aid_pre, diagnostics = T)
+fit.post <- summary(base_m_aid_post, diagnostics = T)
+fit.out <- summary(base_m_aid_out, diagnostics = T)
+
+
+stargazer(base_m_hc3,
+          base_m_aid_hc3,
+          base_m_aid_pre_hc3,
+          base_m_aid_post_hc3,
+          base_m_aid_out_hc3,
+          type = "latex",
+           covariate.labels = c("Naturalization (logged), R to D",
+                                "Ideal Point Diff. (5 year lag)",
+                               "Conflict, Prior Year, R",
+                               "Democratization (ord), R",
+                               "Democracy (ord), R",
+                               "Democracy (squared, ord), R",
+                               "GDP growth, R",
+                               "GDP growth, D",
+                               "GDP (logged), R",
+                               "GDP (logged), D",
+                               "Population (logged), R",
+                               "Population (logged), D",
+                               "Women in Parliament (%), D",
+                               "Common Official Lang.",
+                               "Past Colonial Relationship",
+                               "Distance (km, logged)",
+                               "# of PTAs",
+                               "Unemployment Difference",
+                               "Export (logged), R to D",
+                               "Export (logged), D to R",
+                               "Other Economic Aid",
+                               "Military aid"),
+                               #"Democracy * Naturalization",
+                               #"Democracy (squared) Naturalization"),
+          omit = c("ccode", "19", "20"),
+          add.lines = list(
+            c(diagnostics[1], round(c(fit.base$r.squared,
+                                      fit.base_aid$r.squared,
+                                      fit.pre$r.squared,
+                                      fit.post$r.squared,
+                                      fit.out$r.squared),
+                                      2)),
+            c(diagnostics[2], round(c(fit.base$fstatistic[1],
+                                      fit.base_aid$fstatistic[1],
+                                      fit.pre$fstatistic[1],
+                                      fit.post$fstatistic[1],
+                                      fit.out$fstatistic[1]),
+                                      2)),
+            c(diagnostics[3], nrow(mergepdata4) - nrow(as.matrix(fit.base$na.action)),
+              nrow(mergepdata4) - nrow(as.matrix(fit.base_aid$na.action)),
+              nrow(mergepdata4_pre) - nrow(as.matrix(fit.pre$na.action)),
+              nrow(mergepdata4_post) - nrow(as.matrix(fit.post$na.action)),
+              nrow(mergepdata4_out) - nrow(as.matrix(fit.out$na.action)))))
+
+```
+
+
+*********************
+
+diagnostics for linear regression
+https://data.library.virginia.edu/diagnostic-plots/
+https://www.statmethods.net/stats/rdiagnostics.html
+
+
+*random note on something else
+  - good tutorial on roll_sum
+    https://itsalocke.com/blog/understanding-rolling-calculations-in-r/
+    
+```{r}
+
+options(scipen=999)
+vif(base_m)
+options(scipen=0)
+#naturalization is somewhat okay but variables like population and gdp are very high
+# https://statisticalhorizons.com/multicollinearity
+  # this says that this is ok as long as these variables are controls, which is true in my case
+  # multicollinearity affects only variables that are collinear
+  #GVIF^(1/(2*Df)) I think is good when DF > 1.
+    # https://stats.stackexchange.com/questions/70679/which-variance-inflation-factor-should-i-be-using-textgvif-or-textgvif
+
+qqPlot(base_m, main="QQ Plot")
+# to check that the residuals have a normal distribution
+  # a qqplot that is mostly a diagonal line supports this 
+  #compare between residuals and theoretical quantiles from a theoretical distribution
+
+influencePlot(base_m, id.method="identify", 
+              main="Influence Plot", 
+              sub="Circle size is proportial to Cook's Distance" )
+
+
+
+```
+
+
+
+**********
+
+
+variables to test
+```{r}
+log_naturalization_roll_df_lag
+naturalization_roll_prop_df_lag
+
+```
+
+***
+
+
+Dynamic model as a robustness check (Might not include this)
+```{r}
+
+
+base_dynamic_m <- lm(democracy_aid_com_corr ~ 
+                       democracy_aid_com_corr_lag +
+                       ipdiff_5_lag + 
+                      r_conflict_prioryear_lag +
+                      r_politychange_lag +
+                      r_democracy_lag +
+                      r_democracy_sq_lag +
+                      r_gdp_growth_lag +
+                      d_gdp_growth_lag +
+                      r_gdplog_lag +
+                      d_gdplog_lag +
+                      r_population_lag +
+                      d_population_lag +
+                      d_women_parliament_lag +
+                      comlang_off_lag +
+                      colony_lag +
+                      distlog_lag +
+                      ptacount_lag +
+                      unempdiff_lag +
+                      log_naturalization_lag +
+                      log_rtod_export_lag +
+                      log_dtor_export_lag +
+                      other_economic_aid_lag +
+                      military_aid_corr_lag +
+                      ccode1 + 
+                      ccode2 + 
+                      as.factor(year),
+                     data = mergepdata4,
+                     na.action = na.omit)
+
+summary(base_dynamic_m)
+
+
+base_dynamic_m_hc3 <- coeftest(base_dynamic_m, cluster.vcov(base_dynamic_m,
+                                            cluster = cbind(mergepdata4$ccode1,
+                                                            mergepdata4$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T))#[-(24:nrow(summary(base_dynamic_m)$coefficients)),]; base_dynamic_m_hc3
+
+
+# naturalization still holds but need to account for the effect of the lagged dependent variable
+
+```
+
+
+
+First Differenced Model
+```{r}
+
+#first difference
+  # this will essentially be fixed effects for dyads
+
+base_fd_lag_m <- lm(democracy_aid_com_corr_df ~ 
+                      democracy_aid_com_corr_df_lag +
+                      log_naturalization_df_lag +
+                      ipfd_5_lag +
+                       r_conflict_prioryear_df_lag +
+                      r_politychange_df_lag +
+                      r_democracy_df_lag +
+                      r_democracy_sq_df_lag +
+                      r_gdp_growth_df_lag +
+                      d_gdp_growth_df_lag +
+                      r_gdplog_df_lag +
+                      d_gdplog_df_lag +
+                      r_population_df_lag +
+                      d_population_df_lag +
+                      d_women_parliament_df_lag +
+                      ptacount_df_lag +
+                      unempdiff_df_lag +
+                      log_rtod_export_df_lag +
+                      log_dtor_export_df_lag +
+                      other_economic_aid_df_lag +
+                      military_aid_corr_df_lag,
+                     data = mergepdata4,
+                     na.action = na.omit)
+
+
+summary(base_fd_lag_m)
+
+
+base_fd_lag_m_hc3 <- coeftest(base_fd_lag_m, cluster.vcov(base_fd_lag_m,
+                                            cluster = cbind(mergepdata4$ccode1,
+                                                            mergepdata4$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T)); base_fd_lag_m_hc3
+
+
+#direction is negative when I used log_naturalization_df_lag
+#direction is positive (but not significant) when I use log_naturalization_roll_df_lag 
+
+
+#therefore, log_naturalization_roll has been more consistent 
+  #maybe use this instead
+
+
+  #However, when I try with log_naturalization_lag instead of df lag (because I think naturalization is already fd) it holds
+
+#singular when military aid is added (corrected- there was an issue with the variable)
+
+
+#direction is negative when I used log_naturalization_df_lag but not significant 
+#direction is positive (but not significant) when I use log_naturalization_roll_df_lag 
+
+#therefore, log_naturalization_roll has been more consistent here too
+
+
+#should dyad FE still be included here?
+
+```
+
+
+***
+
+Latex table: Dynamic model
+```{r}
+
+fit.dynamic <- summary(base_dynamic_m, diagnostics = T)
+fit.fd <- summary(base_fd_lag_m, diagnostics = T)
+fit.fd_aid <- summary(base_fd_aidlag_m, diagnostics = T)
+
+stargazer(base_dynamic_m_hc3,
+          type = "latex",
+          covariate.labels = c("Democracy Aid (lagged)",
+                               "Ideal Point Diff. (5 year lag)",
+                               "Conflict, Prior Year, R",
+                               "Democratization (ord), R",
+                               "Democracy (ord), R",
+                               "Democracy (squared, ord), R",
+                               "GDP growth, R",
+                               "GDP growth, D",
+                               "GDP (logged), R",
+                               "GDP (logged), D",
+                               "Population (logged), R",
+                               "Population (logged), D",
+                               "Women in Parliament (%), D",
+                               "Common Official Lang.",
+                               "Past Colonial Relationship",
+                               "Distance (km, logged)",
+                               "# of PTAs",
+                               "Unemployment Difference",
+                               "Naturalization (logged), R to D",
+                               "Export (logged), R to D",
+                               "Export (logged), D to R"),
+          omit = c("ccode", "19", "20"),
+          add.lines = list(
+            c(diagnostics[1], round(c(fit.dynamic$r.squared),
+                                      2)),
+            c(diagnostics[2], round(c(fit.dynamic$fstatistic[1]),
+                                      2)),
+            c(diagnostics[3], nrow(mergepdata4) - nrow(as.matrix(fit.dynamic$na.action)))))
+
+```
+
+
+
+Just the first differenced models
+```{r}
+stargazer(base_fd_lag_m,
+          base_fd_aidlag_m,
+          type = "latex",
+          covariate.labels = c("Democracy Aid (lagged)",
+                               "Ideal Point Diff. (5 year lag)",
+                               "Conflict, Prior Year, R",
+                               #"Democratization (ord), R",
+                               "Democracy (ord), R",
+                               "Democracy (squared, ord), R",
+                               #"GDP growth, R",
+                               #"GDP growth, D",
+                               "GDP (logged), R",
+                               "GDP (logged), D",
+                               "Population (logged), R",
+                               "Population (logged), D",
+                               "Women in Parliament (%), D",
+                               #"Common Official Lang.",
+                               #"Past Colonial Relationship",
+                               #"Distance (km, logged)",
+                               "# of PTAs",
+                               "Unemployment Difference",
+                               "Naturalization (logged), R to D",
+                               "Export (logged), R to D",
+                               "Export (logged), D to R",
+                               "Other Economic Aid"),
+                               #"Military Aid"),
+          omit = c("ccode", "19", "20"))
+
+
+```
+
+****
+
+
+
+ECM
+
+```{r}
+
+
+base_ecm_m <- lm(democracy_aid_com_corr_df ~ 
+                   democracy_aid_com_corr_lag +
+                   log_naturalization_df +
+                   log_naturalization_lag +
+                   ipfd +
+                   ipdiff_lag +
+                   r_conflict_prioryear_df +
+                   r_conflict_prioryear_lag +
+                   r_politychange_df +
+                   r_politychange_lag +
+                   r_democracy_df +
+                   r_democracy_lag +
+                   r_democracy_sq_df +
+                   r_democracy_sq_lag +
+                   r_gdp_growth_df +
+                   r_gdp_growth_lag +
+                   d_gdp_growth_df +
+                   d_gdp_growth_lag +
+                   r_gdplog_df +
+                   r_gdplog_lag +
+                   d_gdplog_df +
+                   d_gdplog_lag +
+                   r_population_df +
+                   r_population_lag +
+                   d_population_df +
+                   d_population_lag +
+                   d_women_parliament_df +
+                   d_women_parliament_lag +
+                   ptacount_df+
+                   ptacount_lag +
+                   unempdiff_df +
+                   unempdiff_lag +
+                   #log_naturalization_roll_df +
+                   #log_naturalization_roll_lag +
+                   log_rtod_export_df +
+                   log_rtod_export_lag +
+                   log_dtor_export_df +
+                   log_dtor_export_lag +
+                   other_economic_aid_df +
+                   other_economic_aid_lag +
+                   military_aid_corr_df +
+                   military_aid_corr_lag +
+                   ccode1 +
+                   ccode2 +
+                   as.factor(year),
+                 data = mergepdata4,
+                 na.action = na.exclude)
+
+
+#summary(base_ecm_m)
+
+
+base_ecm_m_hc3 <- coeftest(base_ecm_m, cluster.vcov(base_ecm_m,
+                                            cluster = cbind(mergepdata4$ccode1,
+                                                            mergepdata4$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T)) #; base_ecm_m_hc3
+
+#effect (at least the short term effect for now, holds for log naturalization)
+
+```
+
+
+
+
+```{r}
+
+#get predicted values
+ecm_pred_m1 <- as.data.frame(cbind(names(predict(base_ecm_m)),
+                          predict(base_ecm_m),
+                          1995:2016)) %>%
+  rename(dyad_index = V1,
+         pred_ecm_m1 = V2,
+         year = V3) %>%
+  mutate(dyad_index = gsub("\\..*", "", dyad_index)) %>%
+  separate(dyad_index, c("ccode1", "ccode2"), "-") %>%
+  mutate(pred_ecm_m1 = as.numeric(as.character(pred_ecm_m1)),
+         year = as.numeric(as.character(year)))
+  
+mergepdata4_ecm <- left_join(mergepdata4,
+                             ecm_pred_m1,
+                             by = c("ccode1",
+                                    "ccode2",
+                                    "year")) %>%
+  pdata.frame(.)
+
+
+
+#Bewley transformation
+
+base_ecm_bewley_m <- lm(democracy_aid_com_corr ~ 
+                   pred_ecm_m1 +
+                   log_naturalization_df +
+                   log_naturalization_lag +
+                   ipfd +
+                   ipdiff_lag +
+                   r_conflict_prioryear_df +
+                   r_conflict_prioryear_lag +
+                   r_politychange_df +
+                   r_politychange_lag +
+                   r_democracy_df +
+                   r_democracy_lag +
+                   r_democracy_sq_df +
+                   r_democracy_sq_lag +
+                   r_gdp_growth_df +
+                   r_gdp_growth_lag +
+                   d_gdp_growth_df +
+                   d_gdp_growth_lag +
+                   r_gdplog_df +
+                   r_gdplog_lag +
+                   d_gdplog_df +
+                   d_gdplog_lag +
+                   r_population_df +
+                   r_population_lag +
+                   d_population_df +
+                   d_population_lag +
+                   d_women_parliament_df +
+                   d_women_parliament_lag +
+                   ptacount_df+
+                   ptacount_lag +
+                   unempdiff_df +
+                   unempdiff_lag +
+                   #log_naturalization_roll_df +
+                   #log_naturalization_roll_lag +
+                   log_rtod_export_df +
+                   log_rtod_export_lag +
+                   log_dtor_export_df +
+                   log_dtor_export_lag +
+                   other_economic_aid_df +
+                   other_economic_aid_lag +
+                   military_aid_corr_df +
+                   military_aid_corr_lag +
+                   ccode1 +
+                   ccode2 +
+                   as.factor(year),
+                     data = mergepdata4_ecm,
+                     na.action = na.exclude)
+
+
+#summary(base_ecm_m)
+
+
+base_ecm_bewley_m_hc3 <- coeftest(base_ecm_bewley_m, cluster.vcov(base_ecm_bewley_m,
+                                            cluster = cbind(mergepdata4_ecm$ccode1,
+                                                            mergepdata4_ecm$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T)); base_ecm_bewley_m_hc3
+
+
+```
+
+***
+
+Latex for ECM
+
+```{r}
+
+fit.ecm <- summary(base_ecm_m, diagnostics = T)
+fit.ecm_bewley <- summary(base_ecm_bewley_m, diagnostics = T)
+
+
+
+stargazer(base_ecm_m_hc3,
+          base_ecm_bewley_m_hc3,
+          omit = c("ccode", "19", "20", "pred_ecm_m1", "gdp_growth"),
+          covariate.labels = c("Lag of Democracy aid (logged, per 1000)",
+                               "fd Naturalization (logged), R to D",
+                               "Lagged Naturalization (logged), R to D",
+                               "fd Ideal Point Diff.",
+                               "Lagged Ideal Point Diff.",
+                               "fd Conflict, R",
+                               "Lagged Conflict, R",
+                               "fd Democratization (ord), R",
+                               "Lagged Democratization (ord), R",
+                               "fd Democracy (ord), R",
+                               "Lagged Democracy (ord), R",
+                               "fd Democracy (squared, ord), R",
+                               "Lagged Democracy (squared, ord), R",
+                               #"fd GDP growth, R",
+                               #"GDP growth, R",
+                               #"fd GDP growth, D",
+                               #"GDP growth, D",
+                               "fd GDP (logged), R",
+                               "Lagged GDP (logged), R",
+                               "fd GDP (logged), D",
+                               "Lagged GDP (logged), D",
+                               "fd Population (logged), R",
+                               "Lagged Population (logged), R",
+                               "fd Population (logged), D",
+                               "Lagged Population (logged), D",
+                               "fd Women in Parliament (%), D",
+                               "Lagged Women in Parliament (%), D",
+                               "fd # of PTAs",
+                               "Lagged # of PTAs",
+                               "fd Unemployment Difference",
+                               "Lagged Unemployment Difference",
+                               "fd Export (logged), R to D",
+                               "Lagged Export (logged), R to D",
+                               "fd Export (logged), D to R",
+                               "Lagged Export (logged), D to R",
+                               "fd Other Economic Aid (logged)",
+                               "Lagged Other Economic Aid",
+                               "fd US Military Aid (logged)",
+                               "Lagged US Military Aid (logged)"),
+          add.lines = list(
+            c(diagnostics[1], round(c(fit.ecm$r.squared,
+                                      fit.ecm_bewley$r.squared),
+                                      2)),
+            c(diagnostics[2], round(c(fit.ecm$fstatistic[1],
+                                      fit.ecm_bewley$fstatistic[1]),
+                                      2)),
+            c(diagnostics[3], nrow(mergepdata4) - nrow(as.matrix(fit.ecm$na.action)),
+              nrow(mergepdata4) - nrow(as.matrix(fit.ecm_bewley$na.action)))),
+          type = "latex")
+
+
+
+```
+
+
+
+
+
+***
+
+Dynamic simulations of the ECM model
+
+```{r}
+
+#low naturalization 
+scenario1 <- mergepdata4 %>%
+  mutate_at(vars(democracy_aid_com_corr_lag,
+                 ipfd_5,
+                 ipdiff_5_lag,
+                 r_conflict_prioryear_df, 
+                 r_conflict_prioryear_lag, 
+                 r_politychange_df,
+                 r_politychange_lag,
+                 r_democracy_df,
+                 r_democracy_lag,
+                 r_democracy_sq_df,
+                 r_democracy_sq_lag, 
+                 r_gdp_growth_df, 
+                 r_gdp_growth_lag, 
+                 d_gdp_growth_df, 
+                 d_gdp_growth_lag, 
+                 r_gdplog_df, 
+                 r_gdplog_lag, 
+                 d_gdplog_df,
+                 d_gdplog_lag,
+                 r_population_df,
+                 r_population_lag,
+                 d_population_df,
+                 d_population_lag,
+                 d_women_parliament_df,
+                 d_women_parliament_lag,
+                 ptacount_df,
+                 ptacount_lag,
+                 unempdiff_df,
+                 unempdiff_lag,
+                 log_rtod_export_df,
+                 log_rtod_export_lag,
+                 log_dtor_export_df,
+                 log_dtor_export_lag,
+                 other_economic_aid_df,
+                 other_economic_aid_lag,
+                 military_aid_corr_df,
+                 military_aid_corr_lag), 
+            mean, na.rm = T) %>%
+  mutate(log_naturalization_df = 0,
+         log_naturalization_lag = quantile(log_naturalization_lag, 0.05, na.rm = T)) %>%
+  select(log_naturalization_df,
+         log_naturalization_lag,
+         democracy_aid_com_corr_lag,
+         ipfd_5,
+                 ipdiff_5_lag,
+                 r_conflict_prioryear_df, 
+                 r_conflict_prioryear_lag, 
+                 r_politychange_df,
+                 r_politychange_lag,
+                 r_democracy_df,
+                 r_democracy_lag,
+                 r_democracy_sq_df,
+                 r_democracy_sq_lag, 
+                 r_gdp_growth_df, 
+                 r_gdp_growth_lag, 
+                 d_gdp_growth_df, 
+                 d_gdp_growth_lag, 
+                 r_gdplog_df, 
+                 r_gdplog_lag, 
+                 d_gdplog_df,
+                 d_gdplog_lag,
+                 r_population_df,
+                 r_population_lag,
+                 d_population_df,
+                 d_population_lag,
+                 d_women_parliament_df,
+                 d_women_parliament_lag,
+                 ptacount_df,
+                 ptacount_lag,
+                 unempdiff_df,
+                 unempdiff_lag,
+                 log_naturalization_df,
+                 log_naturalization_lag,
+                 log_rtod_export_df,
+                 log_rtod_export_lag,
+                 log_dtor_export_df,
+                 log_dtor_export_lag,
+                 other_economic_aid_df,
+                 other_economic_aid_lag,
+                 military_aid_corr_df,
+                 military_aid_corr_lag) %>%
+  distinct()
+  
+  
+
+
+#high naturalization 
+scenario2 <- mergepdata4 %>%
+  mutate_at(vars(democracy_aid_com_corr_lag,
+                 ipfd_5,
+                 ipdiff_5_lag,
+                 r_conflict_prioryear_df, 
+                 r_conflict_prioryear_lag, 
+                 r_politychange_df,
+                 r_politychange_lag,
+                 r_democracy_df,
+                 r_democracy_lag,
+                 r_democracy_sq_df,
+                 r_democracy_sq_lag, 
+                 r_gdp_growth_df, 
+                 r_gdp_growth_lag, 
+                 d_gdp_growth_df, 
+                 d_gdp_growth_lag, 
+                 r_gdplog_df, 
+                 r_gdplog_lag, 
+                 d_gdplog_df,
+                 d_gdplog_lag,
+                 r_population_df,
+                 r_population_lag,
+                 d_population_df,
+                 d_population_lag,
+                 d_women_parliament_df,
+                 d_women_parliament_lag,
+                 ptacount_df,
+                 ptacount_lag,
+                 unempdiff_df,
+                 unempdiff_lag,
+                 log_rtod_export_df,
+                 log_rtod_export_lag,
+                 log_dtor_export_df,
+                 log_dtor_export_lag,
+                 other_economic_aid_df,
+                 other_economic_aid_lag,
+                 military_aid_corr_df,
+                 military_aid_corr_lag), 
+            mean, na.rm = T) %>%
+  mutate(log_naturalization_df = 0,
+         log_naturalization_lag = quantile(log_naturalization_lag, 0.95, na.rm = T)) %>%
+  select(log_naturalization_df,
+         log_naturalization_lag,
+         democracy_aid_com_corr_lag,
+         ipfd_5,
+                 ipdiff_5_lag,
+                 r_conflict_prioryear_df, 
+                 r_conflict_prioryear_lag, 
+                 r_politychange_df,
+                 r_politychange_lag,
+                 r_democracy_df,
+                 r_democracy_lag,
+                 r_democracy_sq_df,
+                 r_democracy_sq_lag, 
+                 r_gdp_growth_df, 
+                 r_gdp_growth_lag, 
+                 d_gdp_growth_df, 
+                 d_gdp_growth_lag, 
+                 r_gdplog_df, 
+                 r_gdplog_lag, 
+                 d_gdplog_df,
+                 d_gdplog_lag,
+                 r_population_df,
+                 r_population_lag,
+                 d_population_df,
+                 d_population_lag,
+                 d_women_parliament_df,
+                 d_women_parliament_lag,
+                 ptacount_df,
+                 ptacount_lag,
+                 unempdiff_df,
+                 unempdiff_lag,
+                 log_naturalization_df,
+                 log_naturalization_lag,
+                 log_rtod_export_df,
+                 log_rtod_export_lag,
+                 log_dtor_export_df,
+                 log_dtor_export_lag,
+                 other_economic_aid_df,
+                 other_economic_aid_lag,
+                 military_aid_corr_df,
+                 military_aid_corr_lag) %>%
+  distinct()
+
+```
+
+Attempt to simulate Dynamic model
+```{r}
+
+#dynamic model
+
+
+
+#low naturalization 
+dynscenario1 <- mergepdata4 %>%
+  mutate_at(vars(democracy_aid_com_corr_df,
+                 democracy_aid_com_corr_df_lag,
+                      ipfd_5_lag,
+                       r_conflict_prioryear_df_lag,
+                      r_politychange_df_lag,
+                      r_democracy_df_lag,
+                      r_democracy_sq_df_lag,
+                      r_gdp_growth_df_lag,
+                      d_gdp_growth_df_lag,
+                      r_gdplog_df_lag,
+                      d_gdplog_df_lag,
+                      r_population_df_lag,
+                      d_population_df_lag,
+                      d_women_parliament_df_lag,
+                      ptacount_df_lag,
+                      unempdiff_df_lag,
+                      log_rtod_export_df_lag,
+                      log_dtor_export_df_lag,
+                      other_economic_aid_df_lag,
+                      military_aid_corr_df_lag), 
+            mean, na.rm = T) %>%
+  mutate(log_naturalization_df_lag = quantile(log_naturalization_df_lag, 0.05, na.rm = T)) %>%
+  select(log_naturalization_df_lag,
+         democracy_aid_com_corr_df,
+                 democracy_aid_com_corr_df_lag,
+                      log_naturalization_df_lag,
+                      ipfd_5_lag,
+                       r_conflict_prioryear_df_lag,
+                      r_politychange_df_lag,
+                      r_democracy_df_lag,
+                      r_democracy_sq_df_lag,
+                      r_gdp_growth_df_lag,
+                      d_gdp_growth_df_lag,
+                      r_gdplog_df_lag,
+                      d_gdplog_df_lag,
+                      r_population_df_lag,
+                      d_population_df_lag,
+                      d_women_parliament_df_lag,
+                      ptacount_df_lag,
+                      unempdiff_df_lag,
+                      log_rtod_export_df_lag,
+                      log_dtor_export_df_lag,
+                      other_economic_aid_df_lag,
+                      military_aid_corr_df_lag) %>%
+  distinct()
+  
+  
+
+#high naturalization 
+
+dynscenario2 <- mergepdata4 %>%
+  mutate_at(vars(democracy_aid_com_corr_df,
+                 democracy_aid_com_corr_df_lag,
+                      ipfd_5_lag,
+                       r_conflict_prioryear_df_lag,
+                      r_politychange_df_lag,
+                      r_democracy_df_lag,
+                      r_democracy_sq_df_lag,
+                      r_gdp_growth_df_lag,
+                      d_gdp_growth_df_lag,
+                      r_gdplog_df_lag,
+                      d_gdplog_df_lag,
+                      r_population_df_lag,
+                      d_population_df_lag,
+                      d_women_parliament_df_lag,
+                      ptacount_df_lag,
+                      unempdiff_df_lag,
+                      log_rtod_export_df_lag,
+                      log_dtor_export_df_lag,
+                      other_economic_aid_df_lag,
+                      military_aid_corr_df_lag), 
+            mean, na.rm = T) %>%
+  mutate(log_naturalization_df_lag = quantile(log_naturalization_df_lag, 0.95, na.rm = T)) %>%
+  select(log_naturalization_df_lag,
+         democracy_aid_com_corr_df,
+                 democracy_aid_com_corr_df_lag,
+                      log_naturalization_df_lag,
+                      ipfd_5_lag,
+                       r_conflict_prioryear_df_lag,
+                      r_politychange_df_lag,
+                      r_democracy_df_lag,
+                      r_democracy_sq_df_lag,
+                      r_gdp_growth_df_lag,
+                      d_gdp_growth_df_lag,
+                      r_gdplog_df_lag,
+                      d_gdplog_df_lag,
+                      r_population_df_lag,
+                      d_population_df_lag,
+                      d_women_parliament_df_lag,
+                      ptacount_df_lag,
+                      unempdiff_df_lag,
+                      log_rtod_export_df_lag,
+                      log_dtor_export_df_lag,
+                      other_economic_aid_df_lag,
+                      military_aid_corr_df_lag) %>%
+  distinct()
+  
+
+
+scenes <- list(scenario1, scenario2)
+dynscenes <- list(dynscenario1, dynscenario2)
+
+
+```
+
+
+```{r}
+
+
+#does not run for fd model
+summary(base_fd_lag_m)
+
+
+aa <- dynsim(obj = base_ecm_m, ldv = "democracy_aid_com_corr_lag", scen = scenes)
+
+dynsimGG(dynamic_sim, leg.name = "Scenarios", leg.labels = c("5th Percentile", "95th Percentile"), 
+          #color = "OrRd",
+          ylab = "Predicted Democracy Aid Allocation")
+
+#there is a diff, but it overlaps and is consistent over time
+#maybe do this with a lagged model?
+  #looking at greene's do file and best's explanation I think the method (doing it on ECM) correct
+    #however, I think they make the fd of the independent variable as 0 - makes sense, since t-1 is constant
+    #made df 0, but it is still the same
+#maybe this is better for interaction?
+  #I don't think it should make a dif
+
+
+```
+
+
+
+
+***
+case-study selection
+
+```{r}
+
+#lieberman 2005 says that if stats are robust, case selection should be made on the line
+  #low residual cases
+
+#let's just squish everything to means
+class(mergepdata4_ecm$pred_ecm_m1)
+
+case_sel <- mergepdata4 %>%
+  group_by(ccode1, ccode2) %>%
+   select(log_naturalization_df,
+         log_naturalization_lag,
+         democracy_aid_com_corr_lag,
+         democracy_aid_com_corr_df,
+         ipfd_5,
+                 ipdiff_5_lag,
+                 r_conflict_prioryear_df, 
+                 r_conflict_prioryear_lag, 
+                 r_politychange_df,
+                 r_politychange_lag,
+                 r_democracy_df,
+                 r_democracy_lag,
+                 r_democracy_sq_df,
+                 r_democracy_sq_lag, 
+                 r_gdp_growth_df, 
+                 r_gdp_growth_lag, 
+                 d_gdp_growth_df, 
+                 d_gdp_growth_lag, 
+                 r_gdplog_df, 
+                 r_gdplog_lag, 
+                 d_gdplog_df,
+                 d_gdplog_lag,
+                 r_population_df,
+                 r_population_lag,
+                 d_population_df,
+                 d_population_lag,
+                 d_women_parliament_df,
+                 d_women_parliament_lag,
+                 ptacount_df,
+                 ptacount_lag,
+                 unempdiff_df,
+                 unempdiff_lag,
+         other_economic_aid_df,
+         other_economic_aid_lag,
+                 log_naturalization_df,
+                 log_naturalization_lag,
+                 log_rtod_export_df,
+                 log_rtod_export_lag,
+                 log_dtor_export_df,
+                 log_dtor_export_lag) %>%
+  summarise_all(mean, na.rm = T)
+
+
+base_ecm_case_m <- lm(democracy_aid_com_corr_df ~ 
+                   democracy_aid_com_corr_lag +
+                   ipfd_5 +
+                   ipdiff_5_lag +
+                   r_conflict_prioryear_df +
+                   r_conflict_prioryear_lag +
+                   r_politychange_df +
+                   r_politychange_lag +
+                   r_democracy_df +
+                   r_democracy_lag +
+                   r_democracy_sq_df +
+                   r_democracy_sq_lag +
+                   r_gdp_growth_df +
+                   r_gdp_growth_lag +
+                   d_gdp_growth_df +
+                   d_gdp_growth_lag +
+                   r_gdplog_df +
+                   r_gdplog_lag +
+                   d_gdplog_df +
+                   d_gdplog_lag +
+                   r_population_df +
+                   r_population_lag +
+                   d_population_df +
+                   d_population_lag +
+                   d_women_parliament_df +
+                   d_women_parliament_lag +
+                   ptacount_df+
+                   ptacount_lag +
+                   unempdiff_df +
+                   unempdiff_lag +
+                   #log_naturalization_roll_df +
+                   #log_naturalization_roll_lag +
+                   log_naturalization_df +
+                   log_naturalization_lag +
+                   log_rtod_export_df +
+                   log_rtod_export_lag +
+                   log_dtor_export_df +
+                   log_dtor_export_lag +
+                   other_economic_aid_df +
+                   other_economic_aid_lag +
+                   ccode1 +
+                   ccode2,
+                   #as.factor(year),
+                   #military_aid_df +
+                   #military_aid_lag,
+                 data = case_sel,
+                 na.action = na.exclude)
+
+
+case_sel$pred <- predict(base_ecm_case_m)
+case_sel$res <- resid(base_ecm_case_m)
+
+case_sel_simple <- case_sel %>%
+  select(ccode1,
+         ccode2,
+         democracy_aid_com_corr_df,
+         log_naturalization_lag,
+         pred,
+         res) %>%
+  mutate(res_abs = abs(res),
+         donor = countrycode(ccode1, "cown", "country.name"),
+         recipient = countrycode(ccode2, "cown", "country.name"))
+
+
+#get predicted values
+
+ggplot(case_sel, aes(x=pred, y=democracy_aid_com_corr_df)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, color="red")
+
+
+ 
+```
+ 
+```{r}
+ ###
+ 
+ 
+ #netherlands (210) and indonesia (850)
+  #idn was a colony of netherlands
+  #during national revolution (1945-1949) hundreds of thousands indonesians moved to netherlands
+  #wiki says that there are 700 000 1st and 2nd gen indonesians in netherlands
+  #netherland and indonesia are big donors and recipients
+  #in 1999, idn had the first election after a regime change
+  #1999 was the point that recorded the most indonesians naturalizing in netherlands (500)
+    #and 2000 was the point that received the most democracy aid from netherlands
+  #2002 amendments to constitution were seen as important steps to full democratization
+    #therefore it might be that the 1999 elections signalled dutch donors that democratization was happending and it just happened to coincide with naturalization, or a combination of both
+    #there was also another peak in 2002-2003 that was separate 
+  #also, remember that most immigrants were actually already dutch citizen
+ 
+ #however, overal migration from indonesia had really diminished after 1940s
+ 
+ #however, bosma (2012) says that indonesian diaspora were motivated by transnationalism and identity
+ 
+#maybe it is not the naturalized citizen numbers that have an immediate impact? maybe they revive national movements amongst 2nd gen and older diaspora? - since max idn naturalization was only 500
+
+ 
+ nld_idn <- mergedata4 %>%
+   filter(dyad_id == "210_850")
+ 
+
+ggplot(nld_idn, aes(x = year,
+                    y = naturalization)) +
+  geom_line()
+
+ggplot(nld_idn, aes(x = year,
+                    y = democracy_aid_com)) +
+  geom_line()
+ 
+
+ggplot(mergedata4, aes(log_naturalization)) + 
+  geom_histogram()
+
+
+#lets also look at surinamese (115) in nld
+#bosma 2012 shows that surinamese organizations opened up the most in nld
+nld_sur <- mergedata4 %>%
+   filter(dyad_id == "210_115")
+
+ggplot(nld_sur, aes(x = year,
+                    y = naturalization)) +
+  geom_line()
+ggplot(nld_sur, aes(x = year,
+                    y = democracy_aid_com)) +
+  geom_line()
+ 
+
+
+#UK(200) and india (750)
+uk_ind <- mergedata4 %>%
+   filter(dyad_id == "200_750")
+
+ggplot(uk_ind, aes(x = year,
+                    y = naturalization)) +
+  geom_line()
+ggplot(uk_ind, aes(x = year,
+                    y = democracy_aid_com)) +
+  geom_line()
+
+#a lot of democracy aid - probably due to population scales
+#although it somewhat seems like naturalization is following aid
+
+#US(2) and burma (775)
+us_bur <- mergedata4 %>%
+   filter(dyad_id == "2_775")
+
+ggplot(us_bur, aes(x = year,
+                    y = naturalization)) +
+  geom_line()
+ggplot(us_bur, aes(x = year,
+                    y = democracy_aid_com)) +
+  geom_line()
+
+
+#US(2) and cuba (40)
+us_cub <- mergedata4 %>%
+   filter(dyad_id == "2_40")
+
+ggplot(us_cub, aes(x = year,
+                   y = naturalization)) +
+  geom_line()
+ggplot(us_cub, aes(x = year,
+                   y = democracy_aid_com)) +
+  geom_line()
+
+
+#korea(732) and thailand(800)
+kor_tha <- mergedata4 %>%
+   filter(dyad_id == "732_800")
+
+ggplot(kor_tha, aes(x = year,
+                   y = naturalization)) +
+  geom_line()
+
+ggplot(kor_tha, aes(x = year,
+                   y = democracy_aid_com)) +
+  geom_line()
+
+
+
+#korea(732) and nepal(790)
+kor_nep <- mergedata4 %>%
+   filter(dyad_id == "732_790")
+
+ggplot(kor_nep, aes(x = year,
+                   y = naturalization)) +
+  geom_line()
+
+ggplot(kor_nep, aes(x = year,
+                   y = democracy_aid_com)) +
+  geom_line()
+
+
+
+#korea(732) and vietnam(817)
+kor_vie <- mergedata4 %>%
+   filter(dyad_id == "732_817")
+
+ggplot(kor_vie, aes(x = year,
+                   y = naturalization)) +
+  geom_line()
+
+ggplot(kor_vie, aes(x = year,
+                   y = democracy_aid_com)) +
+  geom_line()
+
+#spike at 2011, which was when the national assembly elections were held in vietnam
+
+
+#korea(732) and vietnam(817)
+kor_vie <- mergedata4 %>%
+   filter(dyad_id == "732_817")
+
+ggplot(kor_vie, aes(x = year,
+                   y = naturalization)) +
+  geom_line()
+
+ggplot(kor_vie, aes(x = year,
+                   y = democracy_aid_com)) +
+  geom_line()
+
+#spike at 2011, which was when the national assembly elections were held in vietnam
+
+
+```
+
+
+
+
+*****
+*****
+
+Appendix
+
+***
+Base Model - with disbursement
+```{r}
+#all covariates lagged 1
+
+base_disb_m <- lm(democracy_aid_disb_corr ~ 
+                ipdiff_5 + 
+                #ipfd_5+
+                r_conflict_prioryear +
+                r_politychange_lag +
+                r_democracy_lag +
+                r_democracy_sq_lag +
+                r_gdp_growth_lag +
+                d_gdp_growth_lag +
+                r_gdplog_lag +
+                d_gdplog_lag +
+                r_population_lag +
+                d_population_lag +
+                d_women_parliament_lag +
+                comlang_off+
+                colony +
+                distlog+
+                ptacount_lag +
+                unempdiff_lag +
+                log_naturalization_lag +
+                #log_immigration_lag +
+                #naturalization_prop_lag +
+                log_rtod_export_lag +
+                log_dtor_export_lag +
+                ccode1 + 
+                ccode2 + 
+                as.factor(year), 
+              data = mergepdata4,
+              na.action = na.omit)
+
+#summary(base_m)
+
+
+base_disb_m_hc3 <- coeftest(base_disb_m, cluster.vcov(base_disb_m,
+                                            cluster = cbind(mergepdata4$ccode1, mergepdata4$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T))#[-(22:nrow(summary(base_disb_m)$coefficients)),]; base_disb_m_hc3
+
+
+#with disbursement, naturalization still holds
+
+
+
+
+```
+
+Disbursement with other aid
+```{r}
+#base model with other aid types - disbursement
+
+base_disb_m_aid <- lm(democracy_aid_disb_corr ~ 
+                   ipdiff_5 + 
+                #ipfd_5+
+                r_conflict_prioryear +
+                r_politychange_lag +
+                r_democracy_lag +
+                r_democracy_sq_lag +
+                r_gdp_growth_lag +
+                d_gdp_growth_lag +
+                r_gdplog_lag +
+                d_gdplog_lag +
+                r_population_lag +
+                d_population_lag +
+                d_women_parliament_lag +
+                comlang_off+
+                colony +
+                distlog+
+                ptacount_lag +
+                unempdiff_lag +
+                log_naturalization_lag +
+                #log_immigration_lag +
+                log_rtod_export_lag +
+                log_dtor_export_lag +
+                other_economic_aid_lag +
+                military_aid_corr_lag +
+                ccode1 + 
+                ccode2 + 
+                as.factor(year), 
+              data = mergepdata4,
+              na.action = na.omit)
+
+summary(base_disb_m_aid)
+
+#all aid except for military aid affects democracy aid (positively)
+
+base_disb_m_aid_hc3 <- coeftest(base_disb_m_aid, cluster.vcov(base_disb_m_aid,
+                                            cluster = cbind(mergepdata4$ccode1, mergepdata4$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T))#[-(24:nrow(summary(base_disb_m_aid)$coefficients)),]; base_disb_m_aid_hc3
+
+#with disbursement, naturalization still holds
+
+```
+
+
+***
+Base model with aid using prop of naturalization
+
+```{r}
+
+
+base_prop_m_aid <- lm(democracy_aid_disb_corr ~ 
+                   ipdiff_5 + 
+                #ipfd_5+
+                r_conflict_prioryear +
+                r_politychange_lag +
+                r_democracy_lag +
+                r_democracy_sq_lag +
+                r_gdp_growth_lag +
+                d_gdp_growth_lag +
+                r_gdplog_lag +
+                d_gdplog_lag +
+                r_population_lag +
+                d_population_lag +
+                d_women_parliament_lag +
+                comlang_off+
+                colony +
+                distlog+
+                ptacount_lag +
+                unempdiff_lag +
+                #log_naturalization_lag +
+                #log_immigration_lag +
+                  naturalization_prop_log_lag +
+                log_rtod_export_lag +
+                log_dtor_export_lag +
+                other_economic_aid_lag +
+                military_aid_corr_lag +
+                ccode1 + 
+                ccode2 + 
+                as.factor(year), 
+              data = mergepdata4,
+              na.action = na.omit)
+
+#summary(base_prop_m_aid)
+
+#all aid except for military aid affects democracy aid (positively)
+
+base_prop_m_aid_hc3 <- coeftest(base_prop_m_aid, cluster.vcov(base_prop_m_aid,
+                                            cluster = cbind(mergepdata4$ccode1, mergepdata4$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T))#[-(24:nrow(summary(base_prop_m_aid)$coefficients)),]; base_prop_m_aid_hc3
+
+#effect of naturalization holds when it is scaled to donor country pop
+
+
+```
+
+
+Base model using roll sum
+
+```{r}
+
+
+base_roll_m_aid <- lm(democracy_aid_disb_corr ~ 
+                   ipdiff_5 + 
+                #ipfd_5+
+                r_conflict_prioryear +
+                r_politychange_lag +
+                r_democracy_lag +
+                r_democracy_sq_lag +
+                r_gdp_growth_lag +
+                d_gdp_growth_lag +
+                r_gdplog_lag +
+                d_gdplog_lag +
+                r_population_lag +
+                d_population_lag +
+                d_women_parliament_lag +
+                comlang_off+
+                colony +
+                distlog+
+                ptacount_lag +
+                unempdiff_lag +
+                #log_naturalization_lag +
+                #log_immigration_lag +
+                #naturalization_prop_lag +
+                  log_naturalization_roll_lag +
+                log_rtod_export_lag +
+                log_dtor_export_lag +
+                other_economic_aid_lag +
+                military_aid_corr_lag +
+                ccode1 + 
+                ccode2 + 
+                as.factor(year), 
+              data = mergepdata4,
+              na.action = na.omit)
+
+#summary(base_prop_m_aid)
+
+#all aid except for military aid affects democracy aid (positively)
+
+base_roll_m_aid_hc3 <- coeftest(base_roll_m_aid, cluster.vcov(base_roll_m_aid,
+                                            cluster = cbind(mergepdata4$ccode1, mergepdata4$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T))#[-(24:nrow(summary(base_roll_m_aid)$coefficients)),]; base_roll_m_aid_hc3
+
+#when proportional to population using roll sum, the effect holds too
+
+
+```
+
+***
+
+Base model using roll sum prop
+
+```{r}
+
+
+base_roll_prop_m_aid <- lm(democracy_aid_disb_corr ~ 
+                   ipdiff_5 + 
+                #ipfd_5+
+                r_conflict_prioryear +
+                r_politychange_lag +
+                r_democracy_lag +
+                r_democracy_sq_lag +
+                r_gdp_growth_lag +
+                d_gdp_growth_lag +
+                r_gdplog_lag +
+                d_gdplog_lag +
+                r_population_lag +
+                d_population_lag +
+                d_women_parliament_lag +
+                comlang_off+
+                colony +
+                distlog+
+                ptacount_lag +
+                unempdiff_lag +
+                #log_naturalization_lag +
+                #log_immigration_lag +
+                #naturalization_prop_lag +
+                naturalization_roll_prop_log_lag +
+                log_rtod_export_lag +
+                log_dtor_export_lag +
+                other_economic_aid_lag +
+                military_aid_corr_lag +
+                ccode1 + 
+                ccode2 + 
+                as.factor(year), 
+              data = mergepdata4,
+              na.action = na.omit)
+
+#summary(base_roll_prop_m_aid)
+
+#all aid except for military aid affects democracy aid (positively)
+
+base_roll_prop_m_aid_hc3 <- coeftest(base_roll_prop_m_aid, cluster.vcov(base_roll_prop_m_aid,
+                                            cluster = cbind(mergepdata4$ccode1, mergepdata4$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T))#[-(24:nrow(summary(base_roll_prop_m_aid)$coefficients)),]; base_roll_prop_m_aid_hc3
+
+#when proportional to population using roll sum, the effect holds too
+
+
+```
+
+***
+Latex
+```{r}
+
+fit.disb <- summary(base_disb_m_aid, diagnostics = T)
+fit.prop <- summary(base_prop_m_aid, diagnostics = T)
+fit.roll <- summary(base_roll_m_aid, diagnostics = T)
+fit.rollprop <- summary(base_roll_prop_m_aid, diagnostics = T)
+
+
+
+
+
+stargazer(base_m_aid_hc3,
+          base_disb_m_aid_hc3,
+          base_prop_m_aid_hc3,
+          base_roll_m_aid_hc3,
+          base_roll_prop_m_aid_hc3,
+          omit = c("ccode", "19", "20"),
+          covariate.labels = c("Ideal Point Diff. (5 year lag)",
+                               "Conflict, Prior Year, R",
+                               "Democratization (ord), R",
+                               "Democracy (ord), R",
+                               "Democracy (squared, ord), R",
+                               "GDP growth, R",
+                               "GDP growth, D",
+                               "GDP (logged), R",
+                               "GDP (logged), D",
+                               "Population (logged), R",
+                               "Population (logged), D",
+                               "Women in Parliament (%), D",
+                               "Common Official Lang.",
+                               "Past Colonial Relationship",
+                               "Distance (km, logged)",
+                               "# of PTAs",
+                               "Unemployment Difference",
+                               "Naturalization (logged), R to D",
+                               "Naturalization (scaled, logged), R to D",
+                               "Sum of Naturalization (logged), R to D",
+                               "Sum of Naturalization (scaled, logged), R to D",
+                               "Export (logged), R to D",
+                               "Export (logged), D to R",
+                               "Other Economic Aid",
+                               "Military aid"),
+          add.lines = list(
+            c(diagnostics[1], round(c(fit.base$r.squared,
+                                      fit.disb$r.squared,
+                                      fit.prop$r.squared,
+                                      fit.roll$r.squared,
+                                      fit.rollprop$r.squared),
+                                      2)),
+            c(diagnostics[2], round(c(fit.base$fstatistic[1],
+                                      fit.disb$fstatistic[1],
+                                      fit.prop$fstatistic[1],
+                                      fit.roll$fstatistic[1],
+                                      fit.rollprop$fstatistic[1]),
+                                      2)),
+            c(diagnostics[3], nrow(mergepdata4) - nrow(as.matrix(fit.base$na.action)),
+              nrow(mergepdata4) - nrow(as.matrix(fit.disb$na.action)),
+              nrow(mergepdata4) - nrow(as.matrix(fit.prop$na.action)),
+              nrow(mergepdata4) - nrow(as.matrix(fit.roll$na.action)),
+              nrow(mergepdata4) - nrow(as.matrix(fit.rollprop$na.action)))),
+          type = "latex")
+
+
+
+```
+
+
+***
+
+Visually showing that there aren't a lot of time trend
+```{r}
+set.seed(1)
+sample_dyads <- mergedata4 %>% 
+  filter(year > 1994) %>%
+  ungroup() %>%
+  select(democracy_aid_com_corr, 
+         year, 
+         dyad_id,
+         ccode1,
+         ccode2) %>%
+  group_by(dyad_id) %>%
+  filter(any(democracy_aid_com_corr != 0)) %>%
+  ungroup() %>%
+  filter(dyad_id %in% sample(dyad_id, 20))%>%
+  mutate(dyad_name = paste0(countrycode(ccode1, 
+                                        "cown",
+                                        "country.name"),
+                            " - ",
+                            countrycode(ccode2,
+                                        "cown",
+                                        "country.name")))
+  
+
+ggplot(sample_dyads,
+       aes(x=year, y=democracy_aid_com_corr)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~dyad_name) +
+  labs(title = "Democracy aid allocation 1995-2014: Sample of dyads",
+       y = "Democracy aid commitment (logged, per 1000 people)",
+       x = "Year") +
+  scale_x_continuous(breaks = c(2000, 2010))
+
+ggsave("sample_dyad_trends.png", width = 8, height = 7)
+
+
+#plot makes it seem like there is no stationarity
+
+```
+
+
+***
+
+Maybe - table with outliers excluded? (Menard 2018 did this as robustness check)
+  This is an actual concern because we do have outliers
+
+
+
+
+
+***
+ECM with fungible aid as dependent variable
+- program aid
+
+
+ECM
+
+```{r}
+
+
+base_ecm_m_program <- lm(program_aid_com_corr_df ~ 
+                   program_aid_com_corr_lag +
+                   log_naturalization_df +
+                   log_naturalization_lag +
+                   ipfd +
+                   ipdiff_lag +
+                   r_conflict_prioryear_df +
+                   r_conflict_prioryear_lag +
+                   r_politychange_df +
+                   r_politychange_lag +
+                   r_democracy_df +
+                   r_democracy_lag +
+                   r_democracy_sq_df +
+                   r_democracy_sq_lag +
+                   r_gdp_growth_df +
+                   r_gdp_growth_lag +
+                   d_gdp_growth_df +
+                   d_gdp_growth_lag +
+                   r_gdplog_df +
+                   r_gdplog_lag +
+                   d_gdplog_df +
+                   d_gdplog_lag +
+                   r_population_df +
+                   r_population_lag +
+                   d_population_df +
+                   d_population_lag +
+                   d_women_parliament_df +
+                   d_women_parliament_lag +
+                   ptacount_df+
+                   ptacount_lag +
+                   unempdiff_df +
+                   unempdiff_lag +
+                   #log_naturalization_roll_df +
+                   #log_naturalization_roll_lag +
+                   log_rtod_export_df +
+                   log_rtod_export_lag +
+                   log_dtor_export_df +
+                   log_dtor_export_lag +
+                   #other_economic_aid_df +
+                   #other_economic_aid_lag +
+                   military_aid_corr_df +
+                   military_aid_corr_lag +
+                   ccode1 +
+                   ccode2 +
+                   as.factor(year),
+                 data = mergepdata4,
+                 na.action = na.exclude)
+
+
+#summary(base_ecm_m)
+
+
+base_ecm_m_program_hc3 <- coeftest(base_ecm_m_program, cluster.vcov(base_ecm_m_program,
+                                            cluster = cbind(mergepdata4$ccode1,
+                                                            mergepdata4$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T)); base_ecm_m_program_hc3
+
+#effect (at least the short term effect for now, holds for log naturalization)
+
+```
+
+
+
+
+```{r}
+
+#get predicted values
+ecm_pred_m1 <- as.data.frame(cbind(names(predict(base_ecm_m)),
+                          predict(base_ecm_m),
+                          1995:2016)) %>%
+  rename(dyad_index = V1,
+         pred_ecm_m1 = V2,
+         year = V3) %>%
+  mutate(dyad_index = gsub("\\..*", "", dyad_index)) %>%
+  separate(dyad_index, c("ccode1", "ccode2"), "-") %>%
+  mutate(pred_ecm_m1 = as.numeric(as.character(pred_ecm_m1)),
+         year = as.numeric(as.character(year)))
+  
+mergepdata4_ecm <- left_join(mergepdata4,
+                             ecm_pred_m1,
+                             by = c("ccode1",
+                                    "ccode2",
+                                    "year")) %>%
+  pdata.frame(.)
+
+
+
+#Bewley transformation
+
+base_ecm_bewley_m <- lm(democracy_aid_com_corr ~ 
+                   pred_ecm_m1 +
+                   log_naturalization_df +
+                   log_naturalization_lag +
+                   ipfd +
+                   ipdiff_lag +
+                   r_conflict_prioryear_df +
+                   r_conflict_prioryear_lag +
+                   r_politychange_df +
+                   r_politychange_lag +
+                   r_democracy_df +
+                   r_democracy_lag +
+                   r_democracy_sq_df +
+                   r_democracy_sq_lag +
+                   r_gdp_growth_df +
+                   r_gdp_growth_lag +
+                   d_gdp_growth_df +
+                   d_gdp_growth_lag +
+                   r_gdplog_df +
+                   r_gdplog_lag +
+                   d_gdplog_df +
+                   d_gdplog_lag +
+                   r_population_df +
+                   r_population_lag +
+                   d_population_df +
+                   d_population_lag +
+                   d_women_parliament_df +
+                   d_women_parliament_lag +
+                   ptacount_df+
+                   ptacount_lag +
+                   unempdiff_df +
+                   unempdiff_lag +
+                   #log_naturalization_roll_df +
+                   #log_naturalization_roll_lag +
+                   log_rtod_export_df +
+                   log_rtod_export_lag +
+                   log_dtor_export_df +
+                   log_dtor_export_lag +
+                   other_economic_aid_df +
+                   other_economic_aid_lag +
+                   military_aid_corr_df +
+                   military_aid_corr_lag +
+                   ccode1 +
+                   ccode2 +
+                   as.factor(year),
+                     data = mergepdata4_ecm,
+                     na.action = na.exclude)
+
+
+#summary(base_ecm_m)
+
+
+base_ecm_bewley_m_hc3 <- coeftest(base_ecm_bewley_m, cluster.vcov(base_ecm_bewley_m,
+                                            cluster = cbind(mergepdata4_ecm$ccode1,
+                                                            mergepdata4_ecm$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T)); base_ecm_bewley_m_hc3
+
+
+```
+
+***
+
+Latex for ECM
+
+```{r}
+
+fit.ecm <- summary(base_ecm_m, diagnostics = T)
+fit.ecm_bewley <- summary(base_ecm_bewley_m, diagnostics = T)
+
+
+
+stargazer(base_ecm_m_hc3,
+          base_ecm_bewley_m_hc3,
+          omit = c("ccode", "19", "20", "pred_ecm_m1", "gdp_growth"),
+          covariate.labels = c("Lag of Democracy aid (logged, per 1000)",
+                               "fd Naturalization (logged), R to D",
+                               "Lagged Naturalization (logged), R to D",
+                               "fd Ideal Point Diff.",
+                               "Lagged Ideal Point Diff.",
+                               "fd Conflict, R",
+                               "Lagged Conflict, R",
+                               "fd Democratization (ord), R",
+                               "Lagged Democratization (ord), R",
+                               "fd Democracy (ord), R",
+                               "Lagged Democracy (ord), R",
+                               "fd Democracy (squared, ord), R",
+                               "Lagged Democracy (squared, ord), R",
+                               #"fd GDP growth, R",
+                               #"GDP growth, R",
+                               #"fd GDP growth, D",
+                               #"GDP growth, D",
+                               "fd GDP (logged), R",
+                               "Lagged GDP (logged), R",
+                               "fd GDP (logged), D",
+                               "Lagged GDP (logged), D",
+                               "fd Population (logged), R",
+                               "Lagged Population (logged), R",
+                               "fd Population (logged), D",
+                               "Lagged Population (logged), D",
+                               "fd Women in Parliament (%), D",
+                               "Lagged Women in Parliament (%), D",
+                               "fd # of PTAs",
+                               "Lagged # of PTAs",
+                               "fd Unemployment Difference",
+                               "Lagged Unemployment Difference",
+                               "fd Export (logged), R to D",
+                               "Lagged Export (logged), R to D",
+                               "fd Export (logged), D to R",
+                               "Lagged Export (logged), D to R",
+                               "fd Other Economic Aid (logged)",
+                               "Lagged Other Economic Aid",
+                               "fd US Military Aid (logged)",
+                               "Lagged US Military Aid (logged)"),
+          add.lines = list(
+            c(diagnostics[1], round(c(fit.ecm$r.squared,
+                                      fit.ecm_bewley$r.squared),
+                                      2)),
+            c(diagnostics[2], round(c(fit.ecm$fstatistic[1],
+                                      fit.ecm_bewley$fstatistic[1]),
+                                      2)),
+            c(diagnostics[3], nrow(mergepdata4) - nrow(as.matrix(fit.ecm$na.action)),
+              nrow(mergepdata4) - nrow(as.matrix(fit.ecm_bewley$na.action)))),
+          type = "latex")
+
+
+
+```
+
+
+
+
+
+
+
+
+
+****
+Things I'm not sure about including
+****
+
+I don't know if I should include this:
+
+I should also test the effect of immigration on naturalization - This is something I can discuss later in the paper as an aside
+
+```{r}
+
+immigration_m <- lm(log_naturalization ~ 
+                ipdiff_5 + 
+                ipfd_5+
+                democracy_aid_disb_corr_lag +
+                r_conflict_prioryear +
+                r_politychange +
+                r_democracy +
+                r_gdp_growth +
+                d_gdp_growth +
+                r_gdplog +
+                d_gdplog +
+                r_population +
+                d_population +
+                d_women_parliament +
+                comlang_off+
+                colony +
+                distlog+
+                ptacount_lag +
+                r_unemployment_lag +
+                d_unemployment_lag +
+                unempdiff_1 +
+                log_immigration_lag +
+                log_rtod_export_lag +
+                log_dtor_export_lag +
+                ccode1 + 
+                ccode2 + 
+                as.factor(year), 
+              data = mergepdata,
+              na.action = na.omit)
+
+summary(immigration_m)
+
+
+immigration_m_hc3 <- coeftest(base_m, cluster.vcov(immigration_m,
+                                            cluster = cbind(mergepdata$ccode1, mergepdata$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T))[-(24:nrow(summary(immigration_m)$coefficients)),]; immigration_m_hc3
+
+
+#immigration is a strong predictor of naturalization
+  # I think the fact that naturalized citizens can invite others to immigration is a factor
+  # if so, it is an omitted variable (nat -> imm -> aid to stop immigration)
+
+#let's recheck immigration and naturalization data to make sure all the lags and stuff are ok
+
+```
+
+
+
+
+
+****
+
+Maybe I should just look at this using democracy as linear, if I include it
+Interaction model
+```{r}
+
+
+int_model <- lm(democracy_aid_com_corr ~ 
+                   ipdiff_5 + 
+                #ipfd_5+
+                r_conflict_prioryear +
+                r_politychange_lag +
+                r_democracy_lag*log_naturalization_lag +
+                r_democracy_sq_lag*log_naturalization_lag +
+                r_gdp_growth_lag +
+                d_gdp_growth_lag +
+                r_gdplog_lag +
+                d_gdplog_lag +
+                r_population_lag +
+                d_population_lag +
+                d_women_parliament_lag +
+                comlang_off+
+                colony +
+                distlog+
+                ptacount_lag +
+                unempdiff_lag +
+                #log_immigration_lag +
+                log_rtod_export_lag +
+                log_dtor_export_lag +
+                other_economic_aid_lag +
+                military_aid_corr_lag +
+                ccode1 + 
+                ccode2 + 
+                as.factor(year), 
+              data = mergepdata4,
+              na.action = na.omit)
+
+
+summary(int_model)
+#interesting results
+  #conflict and naturalization separately are positive and significant but the interaction is negative and sig
+
+int_model_hc3 <- coeftest(int_model, cluster.vcov(int_model,
+                                            cluster = cbind(mergepdata$ccode1, mergepdata$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T))#[-(24:nrow(summary(int_model)$coefficients)-2),]; int_model_hc3
+
+#interaction is no longer significant, although it is negative
+#interaction with conflict (rare) and democratization (rare) and democracy
+
+### it is significant when we also include democracy ^2
+
+```
+
+
+```{r}
+
+
+# interact_plot(int_model, pred = "r_democracy_sq_lag", modx = "log_naturalization_1", data = mergepdata4,
+#               linearity.check = TRUE, plot.points = TRUE)
+
+
+png(filename="interaction.png",
+    units="in",
+    width=9,
+    height=9,
+    res=144)
+
+par(mfrow = c(2,2))
+
+interaction_plot_continuous(int_model, 
+                            moderator = "log_naturalization_1", 
+                            effect = "r_democracy_lag", 
+                            "r_democracy_lag:log_naturalization_1",
+                            varcov = cluster.vcov(int_model,
+                                            cluster = cbind(mergepdata$ccode1, mergepdata$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T),
+                            xlabel="Naturalization (logged)",
+                            ylab = "d(Democracy Aid)/d(Democracy)",
+                            title = "")
+
+interaction_plot_continuous(int_model, 
+                            effect = "log_naturalization_1", 
+                            moderator = "r_democracy_lag", 
+                            "r_democracy_lag:log_naturalization_1",
+                            varcov = cluster.vcov(int_model,
+                                            cluster = cbind(mergepdata$ccode1, mergepdata$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T),
+                            xlabel="Democracy",
+                            ylab = "d(Democracy Aid)/d(Naturalization)",
+                            title = "")
+
+
+interaction_plot_continuous(int_model, 
+                            moderator = "log_naturalization_1", 
+                            effect = "r_democracy_sq_lag", 
+                            "r_democracy_lag:log_naturalization_1",
+                            varcov = cluster.vcov(int_model,
+                                            cluster = cbind(mergepdata$ccode1, mergepdata$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T),
+                            xlabel="Naturalization (logged)",
+                            ylab = "d(Democracy Aid)/d(Democracy (squared))",
+                            title = "")
+
+interaction_plot_continuous(int_model, 
+                            effect = "log_naturalization_1", 
+                            moderator = "r_democracy_sq_lag", 
+                            "r_democracy_lag:log_naturalization_1",
+                            varcov = cluster.vcov(int_model,
+                                            cluster = cbind(mergepdata$ccode1, mergepdata$ccode2), 
+                                            leverage = 3, 
+                                            df_correction = T),
+                            xlabel="Democracy (squared)",
+                            ylab = "d(Democracy Aid)/d(Naturalization)",
+                            title = "")
+
+dev.off()
+
+#meplot from https://rpubs.com/milesdwilliams15/381372
+
+# meplot(int_model, 
+#        var1 = "log_naturalization_roll_1", 
+#        var2 = "r_democracy", 
+#        "r_democracy:log_naturalization_roll_1",
+#        vcov = cluster.vcov(int_model,
+#                              cluster = cbind(mergepdata$ccode1, mergepdata$ccode2), 
+#                              leverage = 3, 
+#                              df_correction = T))
+
+
+#like burgess suggests, naturalization*democracy don't really affect one another, but the effect of immigration grows as democracy increases when we have immigration*democracy
+#however, then this is not through activism but through direct effect on home country (expat voting)
+
+
+#** once I include dem^2 it has an effect and is as expected
+  #constitutive terms (just democracy related terms) are not significant and only the interactions are
+
+
+```
+
+
+
+****
+
+Dickey-Fuller test
+
+```{r}
+
+# mergepdata_adf <- mergedata3 %>%
+#   filter(!is.na(democracy_aid_disb_corr)) %>%
+#     pdata.frame(., index = c("dyad_id", "year"))
+# 
+# mergedata_adf <- mergedata3 %>%
+#   filter(!is.na(democracy_aid_disb_corr))
+
+adf_mat <- mergedata3 %>% 
+  group_by(dyad_id, year) %>%
+  select(democracy_aid_com_corr) %>%
+  filter(!is.na(democracy_aid_com_corr)) %>%
+  spread(dyad_id, democracy_aid_com_corr) %>%
+  select(-no_aid_dyad) %>%
+  filter(year > 1995)
+
+missing_dyad <- colnames(adf_mat)[colSums(is.na(adf_mat)) > 0] #none are missing
+no_aid_dyad <- colnames(adf_mat)[colSums(adf_mat) < 0.5]
+#there is no na, nan, or inf in aa
+#also tried removing dyads where no aid was given
+
+purtest(adf_mat[ , sample(2:2160, 10)], 
+        pmax = 5, 
+        exo = "trend", 
+        test = "madwu",
+        lags = "AIC") 
+
+
+#tests: “levinlin”, “ips”, “madwu”, “Pm”, “invnormal”, “logit”, “hadri”
+
+#levinlin gives an error,
+#madwu and others runs buts gives no results
+#however, when I limit the number of columns all tests work
+  #i think its because some pairs (columns) are problematics and smaller n reduces the likelihood of those columns being picked
+  # it worked once with madwu for 100 columns and there was no stationarity
+#it doesn't get better when I remove dyads with 0 aid total
+
+#these show that the data is stationary
+
+adf_sample <- replicate(100, purtest(adf_mat[ ,sample(2:2160, 50)],
+                            pmax = 5, 
+                            exo = "trend", 
+                            test = "madwu",
+                            lags = "AIC")[[1]][6])
+
+
+```
+
+
+Manual ADF
+```{r}
+
+
+adf_m <- lm(democracy_aid_com_corr_df ~ 
+                 democracy_aid_com_corr_lag +
+                 democracy_aid_com_corr_df_lag +
+                 ccode1 + 
+                 ccode2 + 
+                 as.factor(year), 
+               data = mergepdata4,
+               na.action = na.omit)
+
+summary(adf_m)
+
+adf_m_hc3 <- coeftest(adf_m, cluster.vcov(adf_m,
+                                         cluster = cbind(mergepdata4$ccode1, 
+                                                         mergepdata4$ccode2), 
+                                         leverage = 3, 
+                                         df_correction = T))[-(24:nrow(summary(adf_m)$coefficients)),]; adf_m_hc3
+
+#these results also show that the data is stationary (which is good)
+
+
+```
+
+***
+
+
+
+Testing for autocorrelation - maybe not include this
+
+```{r}
+
+# ## Dec 20 - for panel data, autocorrelation can be handled by robust standard errors
+# 
+# # https://www.statalist.org/forums/forum/general-stata-discussion/general/1390195-heteroskedasticity-serial-correlation-in-panel-data-with-fixed-effects
+# 
+# 
+# #####
+# table(model2aa$residuals == resid(model2aa))
+# 
+# mergepdata$error <- resid(model2aa)
+# mergepdata$l.error <- ave(mergepdata$error,
+#                          mergepdata$ccode1,
+#                          mergepdata$ccode2,
+#                          FUN=function(x) lagpad(x, 1))
+# 
+# ### Auxiliary regression
+# model2_aux <- lm(error ~ l.error,
+#                  data = mergepdata,
+#                  na.action = na.exclude)
+# 
+# m2auxhc3 <- coeftest(model2_aux, cluster.vcov(model2_aux,
+#                                            cluster = cbind(mergepdata$ccode1, mergepdata$ccode2), 
+#                                            leverage = 3, 
+#                                            df_correction = T))
+# #the lagged error here is significant, so there IS autocorrelation
+
+```  
+
+

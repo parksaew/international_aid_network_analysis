@@ -1,0 +1,161 @@
+---
+title: "What determines the flow of democracy aid between donor states and recipient states?"
+author: "SaewonPark"
+date: "December 6, 2018"
+output: beamer_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+pacman::p_load(stargazer)
+
+```
+
+## Background
+
+- Aid is often considered in the aggregate and the issues of this have been explored
+- Still, many studies on the factors of aid-link formation still see aid as a reward and build mechanisms on that.
+  - even studies that differentiate between the types of aid.
+  
+## Democracy Aid
+
+- Definition
+
+## Previous Reseach
+
+- Aid (including democracy aid) as a reward for
+  - Foreign policy alignment
+  - Economic ties
+  - Altruistic/normative reasons
+  
+## Argument
+
+- I argue that the reward explanation does not apply to democracy aid because:
+  1. Condition to a reward rather than the reward
+  2. Can pose a threat to the regime (direct challenge to regime or sovereignty)
+  3. Fewer fungible components
+
+## Argument
+
+- Then, why do bilateral democracy aid links form?
+  - This is where I am still working
+  
+  - Immigration (normative) *
+    - diaspora can be a signal from donor side, but it is also linked to recipient signal because of the link between the diaspora and their families/friends
+    - the strength of ties of diaspora to country of origin as a predictor? (need to isolate effect to democracy aid only)
+
+  - Military aid (few important cases)
+  
+  - As a signal to receive other aid (unobservable and endogeneous)
+  - Signals from the recipient side in general that signifies a want for democracy and a window of opportunity. 
+
+
+## Research Design
+
+
+## Control
+
+  - Other types of aid
+  
+  - Structural effects of existing aid network (social network effects - but not a causal argument)
+    - donorXdonor or recipientXrecipient matrices of shared donors/recipients, eigenvector centrality
+
+  - Level of democracy
+  
+## Previous result that focused on UNGA voting patterns 
+
+- this was more methodological than causal
+
+
+## Data
+
+```{r, echo = F, results= 'asis'}
+
+mergepdata <- read.csv("UNGA_fulldata.csv", stringsAsFactors = F)
+
+#create a dataframe with only the variables that will be shown in the descriptives
+mergepdata_desc <- dplyr::select(mergepdata, 
+                                 aidflow_corrected,
+                                 s3un, 
+                                 ipfd, 
+                                 r_conflict_prioryear,
+                                 r_politychange,
+                                 democratization,
+                                 r_democracy,
+                                 r_gdp_growth,
+                                 d_gdp_growth,
+                                 r_gdplog, 
+                                 d_gdplog,
+                                 r_population,
+                                 d_population,
+                                 d_women_parliament,
+                                 comlang_off,
+                                 colony,
+                                 distlog,
+                                 ptacount_1,
+                                 intervention_1,
+                                 r_unemployment_1,
+                                 d_unemployment_1,
+                                 unempdiff_1,
+                                 logimmigration_1,
+                                 logrtod_export_1,
+                                 logdtor_export_1)
+
+
+
+stargazer(mergepdata_desc,
+          type = "latex",
+          header = F,
+          covariate.labels = c("Aidflow (per 1000, logged)",
+                               "Ideal Point Difference",
+                               "Change in Ideal Point Difference",
+                               "Conflict, Prior Year, R",
+                               "Democratization (ord), R",
+                               "Democratization (dummy), R",
+                               "Democracy (ord), R",
+                               "GDP growth, R",
+                               "GDP growth, D",
+                               "GDP (logged), R",
+                               "GDP (logged), D",
+                               "Population (logged), R",
+                               "Population (logged), D",
+                               "Women in Parliament (Percent), D",
+                               "Common Official Lang.",
+                               "Past Colonial Relationship",
+                               "Distance (km, logged)",
+                               "# of PTAs",
+                               "Military Intervention (dummy)",
+                               "Unemployment Rate, R",
+                               "Unemployment Rate, D",
+                               "Unemployment Difference",
+                               "Immigration (logged), R to D",
+                               "Export (logged), R to D",
+                               "Export (logged), D to R"),
+          title = "Descriptive Statistics, 1991 - 2014")
+
+
+```
+
+
+
+
+## Questions
+
+- Immigration is correlated with other types of aid as well
+  - How can I isolate the effects of transnational democracy movements led by diaspora?
+  
+- Should I focus on just either military aid or immigration?
+
+
+
+- Research question and contribution to the literature
+- Argument
+- Research Design
+- Estimation
+- Results
+- Open questions/issues/problems
+
+
+
+

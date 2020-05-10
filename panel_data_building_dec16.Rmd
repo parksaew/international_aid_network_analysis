@@ -1,0 +1,1022 @@
+---
+title: "panel_data_building"
+author: "SaewonPark"
+date: "April 23, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+pacman::p_load(tidyverse,
+               countrycode,
+               haven,
+               readxl,
+               plm,
+               RcppRoll) 
+
+
+lag <- dplyr::lag
+lead <- dplyr::lead
+
+```
+
+# Building a Panel dataset 
+
+#### Info
+
+My base dataset was the CRS (aid information from OECD) dataset
+*year range of CRS dataset: 1973-2016
+
+However, we limit the time range to 1990-2014 (due the timeframe of the controls dataset)
+
+
+
+###CRS DATASET
+
+```{r}
+######Import data
+
+##2016
+crs2016 <- read.csv("CRS 2016 data.txt", row.names=NULL, sep="|")
+
+##2015
+crs2015 <- read.csv("CRS 2015 data.txt", row.names=NULL, sep="|")
+
+##2014
+crs2014 <- read.csv("CRS 2014 data.txt", row.names=NULL, sep="|")
+
+##2013
+crs2013 <- read.csv("CRS 2013 data.txt", row.names=NULL, sep="|")
+
+##2012
+crs2012 <- read.csv("CRS 2012 data.txt", row.names=NULL, sep="|")
+
+##2011
+crs2011 <- read.csv("CRS 2011 data.txt", row.names=NULL, sep="|")
+
+##2010
+crs2010 <- read.csv("CRS 2010 data.txt", row.names=NULL, sep="|",  quote = "")
+
+##2009
+crs2009 <- read.csv("CRS 2009 data.txt", row.names=NULL, sep="|",  quote = "")
+
+##2008
+crs2008 <- read.csv("CRS 2008 data.txt", row.names=NULL, sep="|",  quote = "")
+
+##2007
+crs2007 <- read.csv("CRS 2007 data.txt", row.names=NULL, sep="|",  quote = "")
+
+##2006
+crs2006 <- read.csv("CRS 2006 data.txt", row.names=NULL, sep="|",  quote = "")
+
+##2004-5
+crs2004_05 <- read.csv("CRS 2004-05 data.txt", row.names=NULL, sep="|",  quote = "")
+
+##2002-3
+crs2002_03 <- read.csv("CRS 2002-03 data.txt", row.names=NULL, sep="|", quote = "")
+
+##2000-1
+crs2000_01 <- read.csv("CRS 2000-01 data.txt", row.names=NULL, sep="|",  quote = "")
+
+##1995-1999
+crs1999_95 <- read.csv("CRS 1995-99 data.txt", row.names=NULL, sep="|",  quote = "")
+
+##1973-1994
+crs1973_94 <- read.csv("CRS 1973-94 data.txt", row.names=NULL, sep="|",  quote = "")
+```
+
+
+
+Prior to the Dec 2018 edits, a lot of functions that could have been piped had not been piped
+
+```{r}
+
+##########Bind all the data together##########
+
+#the column "interest1" causes problems and we don't need it so I just drop it
+#oct 6: also dropped other variables to reduce size
+listcrs <- mget(ls(pattern='^crs\\d+'))
+listcrs <- lapply(listcrs, function(x) x[!grepl(paste(c("*interest1", 
+                                                           "*biodiversity",
+                                                           "*climateMitigation",
+                                                           "*desertification",
+                                                           "*climateAdaptation",
+                                                           "*Gender",
+                                                           "*Environment"), collapse = "|"), names(x))])
+                  
+list2env(listcrs, envir = .GlobalEnv)
+rm(listcrs)
+
+gc()
+
+rm(list=ls())
+
+#merging data
+
+#because r kept crashing, I didn't bind everything at once
+crspanel <- bind_rows(crs1973_94,
+                      crs1999_95,
+                      crs2000_01,
+                      crs2002_03)
+write.csv(crspanel, "./crs/crs_73-03.csv", row.names = F)
+rm(list=ls())
+
+crspanel <- bind_rows(crs2004_05,
+                      crs2006,
+                      crs2007)
+write.csv(crspanel, "./crs/crs_04-07.csv", row.names = F)
+rm(list=ls())
+
+crspanel <- bind_rows(crs2008,
+                      crs2009,
+                      crs2010)
+write.csv(crspanel, "./crs/crs_08-10.csv", row.names = F)
+rm(list=ls())
+
+crspanel <- bind_rows(crs2011,
+                      crs2012,
+                      crs2013)
+write.csv(crspanel, "./crs/crs_11-13.csv", row.names = F)
+rm(list=ls())
+
+crspanel <- bind_rows(crs2014,
+                      crs2015,
+                      crs2016)
+
+write.csv(crspanel, "./crs/crs_14-16.csv", row.names = F)
+rm(list=ls())
+
+# https://stackoverflow.com/questions/27399814/how-to-remove-certain-columns-in-multiple-data-frames-in-r?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
+# https://stackoverflow.com/questions/12664430/delete-a-column-in-a-data-frame-within-a-list?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
+
+crs_73_03 <- read.csv("./crs/crs_73-03.csv", stringsAsFactors = F)
+crs_04_07 <- read.csv("./crs/crs_04-07.csv", stringsAsFactors = F)
+
+crspanel <- bind_rows(crs_73_03,
+                      crs_04_07)
+write.csv(crspanel, "./crs/crs_73-07.csv", row.names = F)
+rm(list=ls())
+
+crs_08_10 <- read.csv("./crs/crs_08-10.csv", stringsAsFactors = F)
+crs_11_13 <- read.csv("./crs/crs_11-13.csv", stringsAsFactors = F)
+crs_14_16 <- read.csv("./crs/crs_14-16.csv", stringsAsFactors = F)
+
+#fixing column names for pre-2010 data
+names(crs_08_10) <- gsub("X.", "",  names(crs_08_10)) %>%
+  gsub('.{1}$', '', .)
+
+crspanel <- bind_rows(crs_08_10,
+                      crs_11_13,
+                      crs_14_16) %>%
+  select(-LongDescription)
+
+write.csv(crspanel, "./crs/crs_08-16.csv", row.names = F)
+rm(list=ls())
+
+
+### binding everything together
+
+crs_73_07 <- read.csv("./crs/crs_73-07.csv", stringsAsFactors = F)
+names(crs_73_07) <- gsub("X.", "",  names(crs_73_07)) %>%
+  gsub('.{1}$', '', .)
+crs_73_07 <- crs_73_07 %>% 
+  select(-LongDescription)
+
+crs_08_16 <- read.csv("./crs/crs_08-16.csv", stringsAsFactors = F)
+
+crspanel <- bind_rows(crs_73_07,
+                      crs_08_16)
+write.csv(crspanel, "./crs/crspanel.csv", row.names = F)
+rm(crs_73_07, crs_08_16)
+
+## we also need to remove the column LongDescription (which contains a paragraph each and is taking up too much space)
+
+
+######## Change country name to cowcode ########
+#we do this because OECD has their own country code 
+
+##donors##
+
+countries_cow_crsdonor <- unique(countrycode(crspanel$DonorName, "country.name", "cown", warn = TRUE ))
+countries_cow_crsdonor <- countries_cow_crsdonor[!countries_cow_crsdonor == ""]
+countries_cow_crsdonor <- countries_cow_crsdonor[!is.na(countries_cow_crsdonor)]
+
+crspanel$ccodedonor <- countrycode(crspanel$DonorName, "country.name", "cown", warn = TRUE )
+
+##recipients##
+countries_cow_crsrecipient <- unique(countrycode(crspanel$RecipientName, "country.name", "cown", warn = TRUE ))
+countries_cow_crsrecipient <- countries_cow_crsrecipient[!countries_cow_crsrecipient == ""]
+countries_cow_crsrecipient <- countries_cow_crsrecipient[!is.na(countries_cow_crsrecipient)]
+
+crspanel$ccoderecipient <- countrycode(crspanel$RecipientName, "country.name", "cown", warn = TRUE )
+#we need to code Serbia separately, because cow code uses the same code for the former Yugoslavia
+crspanel$ccoderecipient[crspanel$RecipientName == "Serbia"] <- 345 
+
+
+##let's make sure that only the non-countries or very small countries (islands) will be removed
+#donors that will be removed
+as.vector(unique(filter(crspanel, is.na(ccodedonor))$DonorName))
+
+#recipients that will be removed
+as.vector(unique(filter(crspanel, is.na(ccoderecipient))$RecipientName))
+#looks good
+
+
+
+####### Clean the CRS data ########
+##Info about CRS data: http://www.oecd.org/dac/stats/crsguide.htm
+
+crspanel <- read.csv("./crs/crspanel.csv", stringsAsFactors = F)
+
+#deflators in 2016 constant USD
+deflators <- read_excel("../oecd/Deflators-base-2016.xls", skip = 2) %>%
+  rename(countryname = X__1) %>%
+  select(-X__2) %>%
+  filter(!is.na(`1960`) & 
+           !(countryname %in% c("TOTAL DAC", "EU Institutions"))) %>%
+  gather(year, deflator, -countryname) %>%
+  mutate(ccode1 = countrycode(countryname, "country.name", "cown"),
+         deflator = deflator/100,
+         year = as.numeric(year))
+
+  
+
+
+
+#let's get an idea of the other aid
+aid_type_count <- crspanel %>% 
+  select(usd_disbursement,
+         SectorCode,
+         SectorName) %>%
+  group_by(SectorName, SectorCode) %>%
+  summarise(count = n(),
+            usd_disbursement = sum(usd_disbursement, na.rm = T)) %>%
+  filter(SectorCode != 998 & #998 is for unspecified aid
+           SectorName != "") %>% #one field was left blank (very small, 10 count)
+  mutate(aidtype = case_when(SectorCode %in% c(100:140, 152, 160) ~ "social_aid",
+                             SectorCode %in% c(150,151) ~ "democracy_aid",
+                             SectorCode %in% c(200:250) ~ "econ_capacity_aid",
+                             SectorCode %in% c(300:332) ~ "production_aid",
+                             SectorCode %in% c(500:600) ~ "program_aid",
+                             SectorCode %in% c(720:740) ~ "disaster_aid",
+                             TRUE ~ "other_aid")) %>%
+  ungroup()
+#checked that all channels(sub-sectors) belong to some sector
+
+#quick pie chart
+ggplot(aid_type_count, aes(x = "", y = usd_disbursement, fill = aidtype)) +
+  geom_bar(stat = "identity") +
+  coord_polar("y", start=0)
+
+
+#### begin Dec 16 to crs data
+#we need all sectors of aid
+
+crsall <- left_join(crspanel,
+                    select(aid_type_count,
+                           SectorCode,
+                           aidtype),
+                    by = "SectorCode") %>%
+  filter(!is.na(aidtype) &
+           SectorCode != 998 & #998 is for unspecified aid
+           SectorName != "" & #one field name was left blank (very small, 10 count))
+           !is.na(ccodedonor) & 
+           !is.na(ccoderecipient) & #Filter out all the non-countries
+           !(is.na(usd_disbursement) & is.na(usd_commitment))) %>% 
+  select(Year,
+         ccodedonor,
+         ccoderecipient,
+         aidtype,
+         usd_disbursement,
+         usd_commitment) %>%
+  rename(year = Year,
+         ccode1 = ccodedonor,
+         ccode2 = ccoderecipient,
+         aid_disburse = usd_disbursement,
+         aid_commit = usd_commitment) %>%
+  left_join(select(deflators,
+                   year, 
+                   ccode1,
+                   deflator),
+            by = c("year", "ccode1")) %>% #deflating aid according to CRS deflators for donor-year
+  mutate(aid_disburse = aid_disburse/deflator,
+         aid_commit = aid_commit/deflator)
+
+
+  
+#divide into disbursement and commitments, spread into sectors and then merge again
+crsall_dis <- crsall %>%
+  select(year,
+         ccode1,
+         ccode2,
+         aid_disburse,
+         aidtype) %>%
+  filter(!is.na(aid_disburse)) %>%
+  group_by(ccode1, ccode2, year, aidtype) %>%
+  summarise(aid_disburse = sum(aid_disburse, na.rm = T)) %>%
+  spread(aidtype, aid_disburse, fill = 0) %>% #because 0 aid was not recorded (all NAs were already removed)
+  rename_at(vars(-ccode1, -ccode2, -year), funs(paste0(.,"_disb"))) %>%
+  ungroup() %>%
+  group_by(ccode1, ccode2) %>%
+  complete(year = 1973:2016, fill = list(democracy_aid_disb = 0,
+                                         disaster_aid_disb = 0,
+                                         econ_capacity_aid_disb = 0,
+                                         other_aid_disb = 0,
+                                         production_aid_disb = 0,
+                                         program_aid_disb = 0,
+                                         social_aid_disb = 0))
+
+
+crsall_com <- crsall %>%
+  select(year,
+         ccode1,
+         ccode2,
+         aid_commit,
+         aidtype) %>%
+  filter(!is.na(aid_commit)) %>%
+  group_by(ccode1, ccode2, year, aidtype) %>%
+  summarise(aid_commit = sum(aid_commit, na.rm = T)) %>%
+  spread(aidtype, aid_commit, fill = 0) %>% #because 0 aid was not recorded (all NAs were already removed)
+  rename_at(vars(-ccode1, -ccode2, -year), funs(paste0(.,"_com"))) %>%
+  ungroup() %>%
+  group_by(ccode1, ccode2) %>%
+  complete(year = 1973:2016, fill = list(democracy_aid_com = 0,
+                                         disaster_aid_com = 0,
+                                         econ_capacity_aid_com = 0,
+                                         other_aid_com = 0,
+                                         production_aid_com = 0,
+                                         program_aid_com = 0,
+                                         social_aid_com = 0))
+  
+
+#now merge the spread data for both commitments and disbursements
+crsall_sp <- full_join(crsall_com,
+                       crsall_dis,
+                       by = c("ccode1",
+                              "ccode2",
+                              "year")) %>%
+  filter(year > 1985) %>%
+  replace_na(list(democracy_aid_com = 0,
+             democracy_aid_disb = 0))
+  
+
+
+### end dec 16 edit
+
+
+# I will limit my dataset to a timeframe of 1990-2014
+#crscollapsed <- filter(crscollapsed, year > 1989 & year < 2015)
+
+#looks good
+```
+
+
+
+### IDEAL POINTS DATASET
+
+* I saved the rmd as a new dataset on dec 16
+
+```{r}
+#1946-2014: dyad data (has ideal points and affinity data (s2un, s3un)- refer to code book)
+  #absidealdiff in dyad data contains the absolute distance between country 1 and country 2 posterior mean ideal point estimates.
+  #uses COW codes
+
+#####Import data
+dyaddata <- read.table(
+  "Dyadicdata.tab",
+  sep="\t", header=TRUE)
+
+##### Clean data #####
+#absidealdiff is in the opposite direction of s3un
+#greater absidealdiff and lesser s3un means greater difference
+
+## Dec 16
+dyadclean <- select(dyaddata, ccode1, ccode2, year, absidealdiff) %>%
+  rename(ipdiff = absidealdiff) %>% 
+  group_by(ccode1, ccode2) %>%
+  arrange(ccode1, ccode2, year) %>%
+  mutate(ipfd = ipdiff - lag(ipdiff, order_by = year), #first diff
+         ipdiff_1 = lag(ipdiff, order_by = year), # Ideal points diff- 1 yr, 3 yr, 5 yr (savun uses 5)
+         ipdiff_3 = lag(ipdiff, order_by = year, n = 3),
+         ipdiff_5 = lag(ipdiff, order_by = year, n = 5), # Similarly, ideal points FD- 1 yr, 3 yr, 5 yr
+         ipfd_1 = lag(ipfd, order_by = year),
+         ipfd_3 = lag(ipfd, order_by = year, n = 3),
+         ipfd_5 = lag(ipfd, order_by = year, n = 5)) 
+  
+
+```
+
+
+
+##### CRS and I.P. MERGE 
+
+```{r}
+
+mergedata1 <- left_join(crsall_sp,
+                       dyadclean, 
+                       by = c("ccode1", "ccode2", "year"))
+
+```
+
+
+
+### Controls 
+
+```{r}
+##### Adding Controls
+  # these ones are already lagged one year
+
+controls <- read_dta("extended_data_0401.dta") %>%
+  mutate(year = as.integer(year),
+         cowcode = as.integer(cowcode))
+
+#already lagged one year
+#in country-year
+
+
+
+###### Adding control variables to the dataset ######
+
+###Recipient
+#controls$conflict_prioryear
+#controls$polity2_dem_ord #this is the change in democratization
+#controls$democracy #this is the democracy score
+#controls$pop #this is the population that has not been logged #I use it to scale the aid flow
+
+###Both
+#controls$growth_real_gdppc
+#controls$real_gdppc
+#controls$population
+
+###Donor
+#controls$consumer_inflation
+#controls$women_parliament
+
+#remember that pop and aidflows are both in millions
+
+mergedata2 <- left_join(mergedata1,
+                       select(controls,
+                              cowcode,
+                              year,
+                              conflict_prioryear,
+                              pop, #this is just used to correct the aid flow - this is in millions
+                              polity2_dem_ord,
+                              polity2,
+                              growth_real_gdppc,
+                              real_gdppc,
+                              population), #"population"" is logged pop in thousands
+                       by = c("ccode2" = "cowcode", 
+                              "year"="year")) %>%
+  rename(r_democracy = polity2,
+         r_conflict_prioryear = conflict_prioryear,
+         r_pop_notlogged = pop,
+         r_politychange = polity2_dem_ord,
+         r_gdp_growth = growth_real_gdppc,
+         r_gdp = real_gdppc,
+         r_population = population) %>%
+  mutate(r_democratization = as.numeric(r_politychange > 2),
+         r_gdplog = log(r_gdp),
+         r_democracy_sq = (r_democracy)^2) %>%
+  left_join(select(controls,
+                   cowcode,
+                   year,
+                   pop,
+                   growth_real_gdppc,
+                   real_gdppc,
+                   population,
+                   consumer_inflation,
+                   women_parliament),
+            by = c("ccode1" = "cowcode", 
+                   "year"="year")) %>%
+  rename(d_gdp_growth = growth_real_gdppc,
+         d_pop_notlogged = pop,
+         d_gdp = real_gdppc,
+         d_population = population,
+         d_consumer_inflation = consumer_inflation,
+         d_women_parliament = women_parliament) %>%
+  mutate(d_gdplog = log(d_gdp)) %>%
+  mutate_at(vars(contains("aid")), 
+            .funs = funs(corr = log(((./r_pop_notlogged)*1000)+1))) %>%
+  group_by(ccode2, ccode1) %>%
+  mutate_at(vars(ends_with("corr")),
+            .funs = funs(`1` = lag(., order_by = year))) %>%
+  mutate_at(vars(ends_with("corr")),
+            .funs = funs(`3` = lag(., order_by = year, n = 3))) %>%
+  mutate_at(vars(ends_with("corr")),
+            .funs = funs(`5` = lag(., order_by = year, n = 5))) %>%
+  mutate_at(vars(starts_with("r_")),
+            .funs = funs(`1` = lag(., order_by = year))) %>%
+  mutate_at(vars(starts_with("d_")),
+            .funs = funs(`1` = lag(., order_by = year)))
+
+#NA created for aid corrected for population because of missing population data   
+  
+#sanity check - only very few are nans
+#sapply(mergedata, function(x) sum(is.nan(x)))
+#head(select(mergedata, democracy_aid_com_corr, democracy_aid_com_corr_l1)[100:106,])
+
+#for 666, lag democratization by 3 - should I still do this?
+
+write.csv(mergedata2, "mergedata_dec16.csv", row.names = F)
+
+```
+
+
+```{r}
+###CEPII data for distance (no year) 
+cepii <- read_dta("dist_cepii.dta") %>%
+  mutate(ccode1 = countrycode(iso_o, "iso3c", "cown"),
+         ccode2 = countrycode(iso_d, "iso3c", "cown"),
+         distlog = log(dist),
+         d_region = countrycode(ccode1, "cown", "region"),
+         r_region = countrycode(ccode2, "cown", "region"),
+         samereg = as.numeric(d_region == r_region)) 
+
+
+#only the small countries (islands) are missing
+#dist is the simple distance between the biggest cities
+#colony is whether the pair of countries were ever in a colonial relationship
+#distw and distwces are basically the same, but distwces is the inverse to distw
+  #both are weighted distance
+  #distwces shrinks as distance grows and distw is the opposite
+
+
+
+```
+
+
+### DESTA data- PTA 
+
+```{r}
+#create column for number of treaties to be filled with 0s too after merge (?- april 19)
+#for some reason I only looked at PTAs prior to 2005 - idk why I did that, so I removed this restriction
+
+DESTA <- read.csv(file="DESTA_treaties_dyadic.csv", stringsAsFactors = F)
+
+desta1 <- select(DESTA, 
+                 iso1, 
+                 iso2, 
+                 base_treaty,
+                 year) %>%
+  mutate(ccode1 = countrycode(iso1, "iso3n", "cown"),
+         ccode2 = countrycode(iso2, "iso3n", "cown")) %>%
+  filter(!(is.na(ccode1)) & !is.na(ccode2)) %>%
+  distinct() %>%
+  group_by(ccode1, ccode2, year) %>%
+  summarise(ptacount = n()) 
+
+
+desta_both <- rbind(desta1 %>%
+                      ungroup(),
+                    desta1 %>%
+                      rename(c1 = ccode1,
+                             c2 = ccode2) %>%
+                      mutate(ccode1 = c2,
+                             ccode2 = c1) %>%
+                      ungroup() %>%
+                      select(-c1, -c2)) %>%
+  group_by(ccode1, ccode2, year) %>%
+  summarise(ptacount = n()) %>%
+  ungroup()
+
+  
+
+#ptacount equals 1 for both direction of the order of ccode1/2
+  #in desta, each agreement is only counted once (if there is US-CAN, then there is no CAN-US for a particular agreement)
+
+#because there are missing years, the cumulative value and lagged values need to be calculated after merge
+```
+
+
+
+
+### Unemployment Data 
+
+```{r}
+unemployment_worldbank <- read.csv(file="Unemployment_WB.csv", skip = 4, header=TRUE, sep=",") %>%
+  select(-X)
+
+
+#remove the "X" in front of all the column names for the years
+
+unemployment <- unemployment_worldbank %>%
+  select(-Indicator.Code,
+         -Indicator.Name) %>% #we only picked one indicator so this is all the same
+  rename_at(vars(starts_with("X")),
+                 funs(substr(.,2, 5))) %>%
+  gather(year, unemployment, -c(Country.Name, Country.Code)) %>%
+  group_by(Country.Code) %>%
+  mutate(year = as.integer(year),
+         ccode = countrycode(Country.Code, "iso3c", "cown"),
+         unemployment_1 = lag(unemployment, order_by = year)) %>% #lag 1 year
+  ungroup()
+
+
+#looks good
+```
+
+
+
+### Immigration Data 
+
+```{r}
+immigration_oecd <- read.csv("Migration_1975-2015.csv", stringsAsFactors = F)
+
+#not scaled (count at single person level, not in millions, etc.)
+#all host countries are OECD members
+
+#filter only "inflow of foreign population by nationality" (to an OECD member), or VAR = B11
+  #foreign population means people with another nationality
+
+#DEC 12 : also filter B16 (Acquisition of nationality by country of former nationality)
+  #this is naturalization data 
+
+immigration <- filter(immigration_oecd, 
+                      VAR %in% c("B11", "B16")) %>%
+  select(`ï..CO2`,
+         COU,
+         Year,
+         Value,
+         VAR) %>% 
+  spread(VAR, Value) %>%
+  rename(country1 = COU, #donor (inflow)
+         country2 = `ï..CO2`, #recipient (outflow)
+         year = Year,
+         immigration = B11,
+         naturalization = B16) %>%
+  mutate(ccode1 = countrycode(country1, "iso3c", "cown"),
+         ccode2 = countrycode(country2, "iso3c", "cown")) %>%
+  filter(!is.na(ccode1) & !is.na(ccode2)) %>%
+  group_by(country1,
+           country2) %>%
+  mutate(immigration_1 = lag(immigration, order_by = year),
+         immigration_3 = lag(immigration, 3, order_by = year),
+         immigration_5 = lag(immigration, 5, order_by = year),
+         immigration_7 = lag(immigration, 7, order_by = year),
+         immigration_10 = lag(immigration, 10, order_by = year),
+         naturalization_1 = lag(naturalization, order_by = year),
+         naturalization_3 = lag(naturalization, 3, order_by = year),
+         log_immigration = log(immigration + 1),
+         log_immigration_1 = log(immigration_1 + 1),
+         log_immigration_3 = log(immigration_3 + 1),
+         log_immigration_5 = log(immigration_5 + 1),
+         log_immigration_7 = log(immigration_7 + 1),
+         log_immigration_10 = log(immigration_10 + 1),
+         log_naturalization = log(naturalization + 1),
+         log_naturalization_1 = log(naturalization_1 + 1),
+         log_naturalization_3 = log(naturalization_3 + 1)) %>%
+  ungroup()
+
+
+#the country1 column includes TOT which means "total"- we should remove this
+
+
+#I lag this 1, 3, and 5 years because there is an argument in Menard that immigration can lead to unemployment 
+# which can lead to aid (I don't think this is directly related to lagging, but it will be good to check in case)
+
+
+#Dec 12 - I also did a 7 year lag (used by Jones-Correa) and a 10 year lag to proxy for immigrants who have stayed for a while and are more likely to have been naturalized. 
+
+
+#Dec 29 - need to check that all years are present and the lags actually work- it does, the lags are ok
+ # - should use log_naturalization_lag
+
+
+#summary(immigration$immigration)
+#looks good
+
+
+# corrplot(cor(select(immigration,
+#                     immigration,
+#                     naturalization), use = "complete.obs"),
+#          method = "number")
+
+#here the correlation between immigration and naturalization is not too correlated
+
+#sanity check
+#head(immigration, n = 10)
+
+```
+
+
+
+### Trade Data from IMF
+
+```{r}
+#I use exports like DESTA did
+  #use export from oecd to recipient, and then recipient to oecd
+#export in dollars
+
+trade_imf <- read.csv(file="DOT_04-19-2018 19-48-46-85_panel.csv",
+                      stringsAsFactors = F)
+
+#select just the columns I need
+trade <- select(trade_imf,
+                Country.Code, 
+                Counterpart.Country.Code, 
+                Time.Period,
+                Goods..Value.of.Exports..Free.on.board..FOB...US.Dollars..TXG_FOB_USD.) %>%
+  rename(countryfrom = Country.Code,
+         countryto = Counterpart.Country.Code,
+         year = Time.Period,
+         export = Goods..Value.of.Exports..Free.on.board..FOB...US.Dollars..TXG_FOB_USD.) %>%
+  mutate(ccodefrom = countrycode(countryfrom, "imf", "cown"),
+         ccodeto = countrycode(countryto, "imf", "cown")) %>% #change from IMF code
+  filter(!is.na(ccodeto) & !is.na(ccodefrom))
+
+
+
+```
+
+
+### US military aid from foreign aid greenbook
+
+```{r}
+
+#in 2016 constant dollars, obligations not disbursement
+
+us_military_aid <- read_excel("us_foreignaid_greenbook.xlsx", skip = 6) %>%
+  rename(year = `Fiscal Year`,
+         country_name = Country,
+         category = `Assistance Category`,
+         military_aid = `Obligations (Constant Dollars)`) %>%
+  filter(category == "Military") %>%
+  select(year,
+         country_name,
+         military_aid) %>%
+  mutate(ccode2 = countrycode(country_name, "country.name", "cown")) %>%
+  filter(!is.na(ccode2)) %>%
+  group_by(year,
+           ccode2) %>%
+  summarise(military_aid = sum(military_aid)) %>%
+  ungroup() %>%
+  group_by(ccode2) %>%
+  complete(year = 1947:2016) %>%
+  mutate(military_aid = ifelse(is.na(military_aid), 0, military_aid))
+
+
+
+```
+
+
+
+
+Merging part 3- final
+
+```{r}
+
+
+mergedata3 <- left_join(mergedata2,
+                        select(cepii,
+                               contig,
+                               comlang_off,
+                               comlang_ethno,
+                               colony,
+                               dist,
+                               distw,
+                               distwces,
+                               ccode1,
+                               ccode2,
+                               distlog, #this is the log of simple distance
+                               d_region,
+                               r_region,
+                               samereg),
+                        by = c("ccode1",
+                               "ccode2")) %>%
+  left_join(desta_both,
+            by = c("ccode1",
+                   "ccode2",
+                   "year")) %>%
+  group_by(ccode1, ccode2) %>%
+  arrange(ccode1, ccode2, year) %>%
+  mutate(ptacount = ifelse(is.na(ptacount), 0, ptacount), #added up duplicates already
+         ptasum = cumsum(ptacount), # Cumulative count of treaties - will need to autocorrelation
+         ptasum_1 = lag(ptasum, order_by = year),
+         ptacount_1 = lag(ptacount, order_by = year)) %>%
+  left_join(select(unemployment, #unemployment columns for recipient
+                   ccode,
+                   year,
+                   unemployment,
+                   unemployment_1),
+            by = c("ccode2" = "ccode",
+                   "year")) %>%
+  rename(r_unemployment = unemployment,
+         r_unemployment_1 = unemployment_1) %>%
+  left_join(select(unemployment, #unemployment columns for donors
+                   ccode,
+                   year,
+                   unemployment,
+                   unemployment_1),
+            by = c("ccode1" = "ccode",
+                   "year")) %>%
+  rename(d_unemployment = unemployment,
+         d_unemployment_1 = unemployment_1) %>%
+  mutate(unempdiff = d_unemployment - r_unemployment, #also a column for unemployment differences
+         unempdiff_1 = lag(unempdiff, order_by = year)) %>% #negative value: donor has less unemployment
+  left_join(select(immigration,
+                   -country1,
+                   -country2),
+            by = c("ccode1",
+                   "ccode2",
+                   "year")) %>% #adding a 5-year rolling sum of naturalization
+  mutate(naturalization_roll = roll_sum(naturalization, 5, fill = NA, align = "right"),
+         log_naturalization_roll = log(roll_sum(naturalization, 5, fill = NA, align = "right")+1),
+         log_naturalization_roll_1 = lag(log_naturalization_roll, order_by = year),
+         immigration_roll = roll_sum(immigration, 5, fill = NA, align = "right"),
+         log_immigration_roll = log(roll_sum(immigration, 5, fill = NA, align = "right")+1),
+         log_immigration_roll_1 = lag(log_immigration_roll, order_by = year)) %>%
+  left_join(select(trade, #need to merge separately to get d to r and r to d exports
+                   ccodeto,
+                   ccodefrom,
+                   year,
+                   export),
+            by = c("ccode1" = "ccodefrom",
+                   "ccode2" = "ccodeto",
+                   "year")) %>%
+  rename(dtor_export = export) %>%
+  left_join(select(trade, #need to merge separately to get d to r and r to d exports
+                   ccodeto,
+                   ccodefrom,
+                   year,
+                   export),
+            by = c("ccode2" = "ccodefrom",
+                   "ccode1" = "ccodeto",
+                   "year")) %>%
+  rename(rtod_export = export) %>%
+  mutate(log_rtod_export = log(rtod_export+1),
+         log_dtor_export = log(dtor_export+1),
+         rtod_export_1 = lag(rtod_export, order_by = year),
+         dtor_export_1 = lag(dtor_export, order_by = year),
+         log_rtod_export_1 = lag(log_rtod_export, order_by = year),
+         log_dtor_export_1 = lag(log_dtor_export, order_by = year)) %>%
+  left_join(us_military_aid,
+            by = c("ccode2",
+                   "year")) %>%
+  mutate(military_aid_corr = log((military_aid/r_pop_notlogged*1000)+1),
+         military_aid_corr_1 = lag(military_aid_corr, order_by = year),
+         military_aid_corr_3 = lag(military_aid_corr, 3, order_by = year),
+         military_aid_corr_5 = lag(military_aid_corr, 5, order_by = year),
+         dyad_id = paste(ccode1, ccode2, sep = "_")) #creating a dyad-id for augmented dickey fuller tests
+
+
+######################## DONE with merging ######################
+#################################################################
+
+
+###to do TWC with HC3 errors, turn data into pdata.frame and use plm
+mergepdata <- pdata.frame(mergedata3, index = c("ccode1", "ccode2"))
+
+#there are warning because of duplicate dyad (since I have years now)
+#let's proceed for now and see what happens
+
+#sanity check
+head(mergedata3[200:210,c(1,2,3,133,134,142,148,151)], n = 10)
+
+
+```
+
+
+
+
+
+### Corrections, other cleaning tasks
+
+
+```{r}
+########## I need to remove all missing aidflow corrected value#######
+  #since we can't have missing Y
+
+# mergedata <- filter(mergedata, 
+#                      !is.na(aidflow_corrected) & !is.nan(aidflow_corrected) & !is.infinite(aidflow_corrected))
+  # I would not do this because we still need to lag data
+
+
+######### I also need to double lag all variables and get the FD for ECM  ########
+  #ipfd would be dropped and added as fd
+  
+
+#for testing for stationarity and first difference model
+
+mergedata4 <- mergedata3 %>%
+  group_by(ccode1, ccode2) %>%
+  mutate(naturalization_prop_log = log(naturalization/(d_pop_notlogged)+1), #proportional to donor pop in mil
+         immigration_prop_log = log(immigration/(d_pop_notlogged)+1),
+         naturalization_roll_prop_log = log(naturalization_roll/(d_pop_notlogged)+1),
+         immigration_roll_prop_log = log(immigration_roll/(d_pop_notlogged)+1)) %>%
+  mutate_all(.funs = funs(lag = lag(., order_by = year))) %>%
+  select(-dyad_id_lag) %>%
+  mutate(democracy_aid_com_corr_df = democracy_aid_com_corr - democracy_aid_com_corr_lag,
+         democracy_aid_disb_corr_df = democracy_aid_disb_corr - democracy_aid_disb_corr_lag,
+         democracy_aid_com_corr_df_lag = lag(democracy_aid_com_corr_df, order_by = year),
+         democracy_aid_disb_corr_df_lag = lag(democracy_aid_disb_corr_df, order_by = year),
+         disaster_aid_com_corr_df = disaster_aid_com_corr - disaster_aid_com_corr_lag,
+         econ_capacity_aid_com_corr_df = econ_capacity_aid_com_corr - econ_capacity_aid_com_corr_lag,
+         other_aid_com_corr_df = other_aid_com_corr - other_aid_com_corr_lag,
+         production_aid_com_corr_df = production_aid_com_corr - production_aid_com_corr_lag,
+         program_aid_com_corr_df = program_aid_com_corr - program_aid_com_corr_lag,
+         social_aid_com_corr_df = social_aid_com_corr - social_aid_com_corr_lag,
+         disaster_aid_disb_corr_df = disaster_aid_disb_corr - disaster_aid_disb_corr_lag,
+         econ_capacity_aid_disb_corr_df =econ_capacity_aid_disb_corr - econ_capacity_aid_disb_corr_lag,
+         other_aid_disb_corr_df = other_aid_disb_corr - other_aid_disb_corr_lag,
+         production_aid_disb_corr_df = production_aid_disb_corr - production_aid_disb_corr_lag,
+         program_aid_disb_corr_df = program_aid_disb_corr - program_aid_disb_corr_lag,
+         social_aid_disb_corr_df = social_aid_disb_corr - social_aid_disb_corr_lag,
+         r_conflict_prioryear_df = r_conflict_prioryear - r_conflict_prioryear_lag, #I skip ipdiff bc it is already fd
+         r_politychange_df = r_politychange - r_politychange_lag,
+         r_democracy_df = r_democracy - r_democracy_lag,
+         r_gdp_growth_df = r_gdp_growth - r_gdp_growth_lag,
+         r_gdp_df = r_gdp - r_gdp_lag,
+         r_population_df = r_population - r_population_lag,
+         r_democratization_df = r_democratization - r_democratization_lag,
+         r_gdplog_df = r_gdplog - r_gdplog_lag,
+         r_democracy_sq_df = r_democracy_sq - r_democracy_sq_lag,
+         d_gdp_growth_df = d_gdp_growth - d_gdp_growth_lag,
+         d_gdp_df = d_gdp - d_gdp_lag,
+         d_population_df = d_population - d_population_lag,
+         #d_consumer_inflation_df = d_consumer_inflation - d_consumer_inflation_lag,  # this a chr vector
+         d_women_parliament_df = d_women_parliament - d_women_parliament_lag,
+         d_gdplog_df = d_gdplog - d_gdplog_lag,
+         ptacount_df = ptacount - ptacount_lag,
+         ptasum__df = ptasum - ptasum_lag,
+         unempdiff_df = unempdiff - unempdiff_lag,
+         log_immigration_df = log_immigration - log_immigration_lag,
+         log_immigration_5_df = log_immigration_5 - log_immigration_5_lag,
+         log_naturalization_df = log_naturalization - log_naturalization_lag,
+         log_naturalization_1_df = log_naturalization_1 - log_naturalization_1_lag,
+         log_naturalization_3_df = log_naturalization_3 - log_naturalization_3_lag,
+         log_naturalization_roll_df = log_naturalization_roll - log_naturalization_roll_lag,
+         log_immigration_roll_lag = log_immigration_roll - log_immigration_roll_lag,
+         log_rtod_export_df = log_rtod_export - log_rtod_export_lag,
+         log_dtor_export_df = log_dtor_export - log_dtor_export_lag,
+         military_aid_df = military_aid - military_aid_lag,
+         military_aid_corr_df = military_aid_corr - military_aid_corr_lag,
+         other_economic_aid = log(((disaster_aid_disb +
+                                    econ_capacity_aid_disb +
+                                    other_aid_disb + 
+                                    production_aid_disb +
+                                    program_aid_disb +
+                                    social_aid_disb)/1000)+1),
+         other_economic_aid_lag = lag(other_economic_aid, order_by = year),
+         other_economic_aid_df = other_economic_aid - other_economic_aid_lag,
+         naturalization_prop_log_df = naturalization_prop_log - naturalization_prop_log_lag,
+         immigration_prop_log_df = immigration_prop_log - immigration_prop_log_lag,
+         naturalization_roll_prop_log_df = naturalization_roll_prop_log - naturalization_roll_prop_log_lag,
+         immigration_roll_prop_log_df = immigration_roll_prop_log - immigration_roll_prop_log_lag) %>%
+  mutate_at(vars(ends_with("_df")),
+            .funs = funs(lag = lag(., order_by = year)))
+
+#str(mergedata4[ , 250:338])
+ #I should lag all the dfs (DONE)
+
+```
+
+
+
+
+
+
+
+```{r}
+
+# ###no iraq data
+# #remove the US and Iraq (or just Iraq)
+# mergepdata_noirq <- filter(mergepdata, ccode2 != 625 )
+# #countrycode("Iraq", "country.name", "cown")
+# 
+# #looks good
+# 
+# 
+# #let's export this as *.dta for later use
+#   # we need to take care of factors before converting to dta
+# 
+# mergepdata$iso_o <- as.character(mergepdata$iso_o)
+# mergepdata$iso_d <- as.character(mergepdata$iso_d)
+# 
+# mergepdata$region1 <- as.character(mergepdata$region1)
+# mergepdata$region2 <- as.character(mergepdata$region2)
+# 
+# mergepdata$continent1 <- as.character(mergepdata$continent1)
+# mergepdata$continent2 <- as.character(mergepdata$continent2)
+# 
+# class(mergepdata$region1)
+# 
+# table(sapply(mergepdata, is.factor))
+# 
+# write.dta(mergepdata, "C:/Users/Spark/Desktop/Winter_2018/ORGB_708/research/researchproj/708data_0421.dta", 
+#           convert.factors = "numeric")
+# 
+# 
+# #added oct 6 2018
+# aa <- read_dta("708data_0421.dta")
+# 
+# write.csv(aa, "UNGA_fulldata.csv", row.names = F)
+
+
+```
+
+
+
+
+
+

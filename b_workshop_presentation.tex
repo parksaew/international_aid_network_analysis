@@ -1,0 +1,318 @@
+\PassOptionsToPackage{unicode=true}{hyperref} % options for packages loaded elsewhere
+\PassOptionsToPackage{hyphens}{url}
+%
+\documentclass[ignorenonframetext,]{beamer}
+\usepackage{pgfpages}
+\setbeamertemplate{caption}[numbered]
+\setbeamertemplate{caption label separator}{: }
+\setbeamercolor{caption name}{fg=normal text.fg}
+\beamertemplatenavigationsymbolsempty
+\usepackage{lmodern}
+\usepackage{amssymb,amsmath}
+\usepackage{ifxetex,ifluatex}
+\usepackage{fixltx2e} % provides \textsubscript
+\ifnum 0\ifxetex 1\fi\ifluatex 1\fi=0 % if pdftex
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provides euro and other symbols
+\else % if luatex or xelatex
+  \usepackage{unicode-math}
+  \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
+\fi
+% use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+% use microtype if available
+\IfFileExists{microtype.sty}{%
+\usepackage[]{microtype}
+\UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\IfFileExists{parskip.sty}{%
+\usepackage{parskip}
+}{% else
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt plus 2pt minus 1pt}
+}
+\usepackage{hyperref}
+\hypersetup{
+            pdftitle={What determines the flow of democracy aid between donor states and recipient states?},
+            pdfauthor={SaewonPark},
+            pdfborder={0 0 0},
+            breaklinks=true}
+\urlstyle{same}  % don't use monospace font for urls
+\newif\ifbibliography
+% Prevent slide breaks in the middle of a paragraph:
+\widowpenalties 1 10000
+\raggedbottom
+\setbeamertemplate{part page}{
+\centering
+\begin{beamercolorbox}[sep=16pt,center]{part title}
+  \usebeamerfont{part title}\insertpart\par
+\end{beamercolorbox}
+}
+\setbeamertemplate{section page}{
+\centering
+\begin{beamercolorbox}[sep=12pt,center]{part title}
+  \usebeamerfont{section title}\insertsection\par
+\end{beamercolorbox}
+}
+\setbeamertemplate{subsection page}{
+\centering
+\begin{beamercolorbox}[sep=8pt,center]{part title}
+  \usebeamerfont{subsection title}\insertsubsection\par
+\end{beamercolorbox}
+}
+\AtBeginPart{
+  \frame{\partpage}
+}
+\AtBeginSection{
+  \ifbibliography
+  \else
+    \frame{\sectionpage}
+  \fi
+}
+\AtBeginSubsection{
+  \frame{\subsectionpage}
+}
+\setlength{\emergencystretch}{3em}  % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setcounter{secnumdepth}{0}
+
+% set default figure placement to htbp
+\makeatletter
+\def\fps@figure{htbp}
+\makeatother
+
+
+\title{What determines the flow of democracy aid between donor states and
+recipient states?}
+\author{SaewonPark}
+\date{December 6, 2018}
+
+\begin{document}
+\frame{\titlepage}
+
+\begin{frame}{Background}
+\protect\hypertarget{background}{}
+
+\begin{itemize}
+\tightlist
+\item
+  Aid is often considered in the aggregate and the issues of this have
+  been explored
+\item
+  Still, many studies on the factors of aid-link formation still see aid
+  as a reward and build mechanisms on that.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    even studies that differentiate between the types of aid.
+  \end{itemize}
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Democracy Aid}
+\protect\hypertarget{democracy-aid}{}
+
+\begin{itemize}
+\tightlist
+\item
+  Definition
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Previous Reseach}
+\protect\hypertarget{previous-reseach}{}
+
+\begin{itemize}
+\tightlist
+\item
+  Aid (including democracy aid) as a reward for
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Foreign policy alignment
+  \item
+    Economic ties
+  \item
+    Altruistic/normative reasons
+  \end{itemize}
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Argument}
+\protect\hypertarget{argument}{}
+
+\begin{itemize}
+\tightlist
+\item
+  I argue that the reward explanation does not apply to democracy aid
+  because:
+
+  \begin{enumerate}
+  \tightlist
+  \item
+    Condition to a reward rather than the reward
+  \item
+    Can pose a threat to the regime (direct challenge to regime or
+    sovereignty)
+  \item
+    Fungible components are smaller
+  \end{enumerate}
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Argument}
+\protect\hypertarget{argument-1}{}
+
+\begin{itemize}
+\tightlist
+\item
+  Then, why do bilateral democracy aid links form?
+
+  \begin{itemize}
+  \item
+    This is where I am still working
+  \item
+    Immigration (normative) *
+
+    \begin{itemize}
+    \tightlist
+    \item
+      diaspora can be a signal from donor side, but it is also linked to
+      recipient signal because of the link between the diaspora and
+      their families/friends
+    \item
+      the strength of ties of diaspora to country of origin as a
+      predictor? (need to isolate effect to democracy aid only)
+    \end{itemize}
+  \item
+    Military aid (few important cases)
+  \item
+    As a signal to receive other aid (unobservable and endogeneous)
+  \item
+    Signals from the recipient side in general that signifies a want for
+    democracy and a window of opportunity.
+  \end{itemize}
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Research Design}
+\protect\hypertarget{research-design}{}
+
+\end{frame}
+
+\begin{frame}{Control}
+\protect\hypertarget{control}{}
+
+\begin{itemize}
+\item
+  Other types of aid
+\item
+  Structural effects of existing aid network (social network effects -
+  but not a causal argument)
+
+  \begin{itemize}
+  \tightlist
+  \item
+    donorXdonor or recipientXrecipient matrices of shared
+    donors/recipients, eigenvector centrality
+  \end{itemize}
+\item
+  Level of democracy
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Previous result that focused on UNGA voting patterns}
+\protect\hypertarget{previous-result-that-focused-on-unga-voting-patterns}{}
+
+\begin{itemize}
+\tightlist
+\item
+  this was more methodological than causal
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Data}
+\protect\hypertarget{data}{}
+
+\begin{table}[!htbp] \centering 
+  \caption{Descriptive Statistics, 1991 - 2014} 
+  \label{} 
+\begin{tabular}{@{\extracolsep{5pt}}lccccccc} 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+Statistic & \multicolumn{1}{c}{N} & \multicolumn{1}{c}{Mean} & \multicolumn{1}{c}{St. Dev.} & \multicolumn{1}{c}{Min} & \multicolumn{1}{c}{Pctl(25)} & \multicolumn{1}{c}{Pctl(75)} & \multicolumn{1}{c}{Max} \\ 
+\hline \\[-1.8ex] 
+Aidflow (per 1000, logged) & 18,895 & 3.372 & 2.107 & $-$6.326 & 1.642 & 4.961 & 11.193 \\ 
+Ideal Point Difference & 18,778 & 1.695 & 0.760 & 0.000 & 1.262 & 2.114 & 4.608 \\ 
+Change in Ideal Point Difference & 18,766 & $-$0.003 & 0.159 & $-$1.345 & $-$0.083 & 0.082 & 1.126 \\ 
+Conflict, Prior Year, R & 18,510 & 0.223 & 0.417 & 0.000 & 0.000 & 0.000 & 1.000 \\ 
+Democratization (ord), R & 17,507 & 0.286 & 2.105 & $-$14.000 & 0.000 & 0.000 & 16.000 \\ 
+Democratization (dummy), R & 17,507 & 0.067 & 0.249 & 0.000 & 0.000 & 0.000 & 1.000 \\ 
+Democracy (ord), R & 17,560 & 3.186 & 5.610 & $-$10.000 & $-$2.000 & 8.000 & 10.000 \\ 
+GDP growth, R & 18,895 & 4.750 & 8.705 & $-$39.240 & 0.812 & 7.955 & 93.775 \\ 
+GDP growth, D & 18,894 & 1.908 & 3.185 & $-$24.395 & 0.490 & 3.886 & 19.385 \\ 
+GDP (logged), R & 18,895 & 8.322 & 0.952 & 4.997 & 7.574 & 9.110 & 10.813 \\ 
+GDP (logged), D & 18,894 & 10.585 & 0.211 & 9.776 & 10.453 & 10.684 & 11.463 \\ 
+Population (logged), R & 18,895 & 9.611 & 1.643 & 3.793 & 8.593 & 10.632 & 14.130 \\ 
+Population (logged), D & 18,894 & 10.124 & 1.336 & 5.772 & 9.039 & 11.064 & 12.674 \\ 
+Women in Parliament (Percent), D & 18,894 & 26.726 & 11.008 & 1.500 & 17.900 & 36.600 & 47.300 \\ 
+Common Official Lang. & 18,579 & 0.168 & 0.374 & 0.000 & 0.000 & 0.000 & 1.000 \\ 
+Past Colonial Relationship & 18,579 & 0.076 & 0.264 & 0.000 & 0.000 & 0.000 & 1.000 \\ 
+Distance (km, logged) & 18,579 & 8.748 & 0.617 & 4.765 & 8.456 & 9.167 & 9.885 \\ 
+# of PTAs & 16,588 & 0.014 & 0.117 & 0.000 & 0.000 & 0.000 & 1.000 \\ 
+Military Intervention (dummy) & 16,588 & 0.002 & 0.041 & 0.000 & 0.000 & 0.000 & 1.000 \\ 
+Unemployment Rate, R & 18,656 & 8.483 & 6.784 & 0.160 & 3.735 & 11.193 & 44.157 \\ 
+Unemployment Rate, D & 18,771 & 7.027 & 3.351 & 1.640 & 4.620 & 8.390 & 27.470 \\ 
+Unemployment Difference & 18,656 & $-$1.450 & 7.556 & $-$37.957 & $-$4.853 & 3.289 & 25.770 \\ 
+Immigration (logged), R to D & 15,207 & 5.153 & 2.430 & 0.000 & 3.434 & 6.876 & 12.155 \\ 
+Export (logged), R to D & 15,635 & 16.846 & 3.611 & 0.000 & 14.721 & 19.395 & 26.634 \\ 
+Export (logged), D to R & 16,524 & 17.885 & 2.508 & 5.220 & 16.309 & 19.546 & 26.144 \\ 
+\hline \\[-1.8ex] 
+\end{tabular} 
+\end{table}
+
+\end{frame}
+
+\begin{frame}{Questions}
+\protect\hypertarget{questions}{}
+
+\begin{itemize}
+\item
+  Immigration is correlated with other types of aid as well
+
+  \begin{itemize}
+  \tightlist
+  \item
+    How can I isolate the effects of transnational democracy movements
+    led by diaspora?
+  \end{itemize}
+\item
+  Should I focus on just either military aid or immigration?
+\item
+  Research question and contribution to the literature
+\item
+  Argument
+\item
+  Research Design
+\item
+  Estimation
+\item
+  Results
+\item
+  Open questions/issues/problems
+\end{itemize}
+
+\end{frame}
+
+\end{document}
