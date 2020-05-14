@@ -21,176 +21,75 @@ lead <- dplyr::lead
 
 ```
 
+
 # Building a Panel dataset 
 
-#### Info
+## Introduction
 
-My base dataset was the CRS (aid information from OECD) dataset
-*year range of CRS dataset: 1973-2016
+The purpose of this research is to examine factors that affect international aid, including UN General Assembly voting patterns as well as diaspora activism.
 
-However, we limit the time range to 1990-2014 (due the timeframe of the controls dataset)
-
+This script prepares data on aid (dependent variable) and suspected predictors of aid (independent variables) for analysis. 
 
 
-###CRS DATASET
+## Data Used
+
+Time range: 1990-2014. This is the biggest range of years based on the availability of data.
+
+Country range: All possible countries where data is available
+
+
+Main dataset: CRS dataset has international aid data collected by the OECD (1973-2016)
+
+Other datasets:
+
+  - 
+
+
+
+### 1. Importing and cleaning the CRS data
 
 ```{r}
-######Import data
+##Import data
 
-##2016
-crs2016 <- read.csv("CRS 2016 data.txt", row.names=NULL, sep="|")
+#get the list of CRS csv files using file name patterns of the CRS data files
+crs_files <- list.files(path = ".",
+                        pattern = ".*CRS.*data\\.txt",
+                        full.names = T)
 
-##2015
-crs2015 <- read.csv("CRS 2015 data.txt", row.names=NULL, sep="|")
+#read each file listed in crs_files and combine the dataset as a list
+crs_data <- lapply(crs_files,
+                   read.csv,
+                   row.names = NULL,
+                   sep = "|", 
+                   quote = "",
+                   stringsAsFactors = F) %>% #note: originally, I included quote = "" for pre-2010 (including 2010) files, but I'm not sure why. (if this doesn't cause issues, remove this note)
+  lapply(.,
+         function(x){x["X.interest1."] <- NULL; x})
+  
 
-##2014
-crs2014 <- read.csv("CRS 2014 data.txt", row.names=NULL, sep="|")
+#let's check whether all the datasets have the same set of columns
+crs_column_names <- sapply(crs_data, names)
+all(apply(crs_column_names,
+          2,
+          identical,
+          crs_column_names[,1])) # should be TRUE
 
-##2013
-crs2013 <- read.csv("CRS 2013 data.txt", row.names=NULL, sep="|")
+#binding all the separate data frames together into a list
+crspanel <- bind_rows(crs_data)
 
-##2012
-crs2012 <- read.csv("CRS 2012 data.txt", row.names=NULL, sep="|")
 
-##2011
-crs2011 <- read.csv("CRS 2011 data.txt", row.names=NULL, sep="|")
+#deleting the list from the environment because it is very large
+rm(crs_data)
 
-##2010
-crs2010 <- read.csv("CRS 2010 data.txt", row.names=NULL, sep="|",  quote = "")
+#saving the resulting single datafram as a csv so that this slow process does not have to be repeated
+write.csv(crspanel, "./crs/crspanel.csv", row.names = F)
 
-##2009
-crs2009 <- read.csv("CRS 2009 data.txt", row.names=NULL, sep="|",  quote = "")
-
-##2008
-crs2008 <- read.csv("CRS 2008 data.txt", row.names=NULL, sep="|",  quote = "")
-
-##2007
-crs2007 <- read.csv("CRS 2007 data.txt", row.names=NULL, sep="|",  quote = "")
-
-##2006
-crs2006 <- read.csv("CRS 2006 data.txt", row.names=NULL, sep="|",  quote = "")
-
-##2004-5
-crs2004_05 <- read.csv("CRS 2004-05 data.txt", row.names=NULL, sep="|",  quote = "")
-
-##2002-3
-crs2002_03 <- read.csv("CRS 2002-03 data.txt", row.names=NULL, sep="|", quote = "")
-
-##2000-1
-crs2000_01 <- read.csv("CRS 2000-01 data.txt", row.names=NULL, sep="|",  quote = "")
-
-##1995-1999
-crs1999_95 <- read.csv("CRS 1995-99 data.txt", row.names=NULL, sep="|",  quote = "")
-
-##1973-1994
-crs1973_94 <- read.csv("CRS 1973-94 data.txt", row.names=NULL, sep="|",  quote = "")
 ```
 
 
 
-Prior to the Dec 2018 edits, a lot of functions that could have been piped had not been piped
 
 ```{r}
-
-##########Bind all the data together##########
-
-#the column "interest1" causes problems and we don't need it so I just drop it
-#oct 6: also dropped other variables to reduce size
-listcrs <- mget(ls(pattern='^crs\\d+'))
-listcrs <- lapply(listcrs, function(x) x[!grepl(paste(c("*interest1", 
-                                                           "*biodiversity",
-                                                           "*climateMitigation",
-                                                           "*desertification",
-                                                           "*climateAdaptation",
-                                                           "*Gender",
-                                                           "*Environment"), collapse = "|"), names(x))])
-                  
-list2env(listcrs, envir = .GlobalEnv)
-rm(listcrs)
-
-gc()
-
-rm(list=ls())
-
-#merging data
-
-#because r kept crashing, I didn't bind everything at once
-crspanel <- bind_rows(crs1973_94,
-                      crs1999_95,
-                      crs2000_01,
-                      crs2002_03)
-write.csv(crspanel, "./crs/crs_73-03.csv", row.names = F)
-rm(list=ls())
-
-crspanel <- bind_rows(crs2004_05,
-                      crs2006,
-                      crs2007)
-write.csv(crspanel, "./crs/crs_04-07.csv", row.names = F)
-rm(list=ls())
-
-crspanel <- bind_rows(crs2008,
-                      crs2009,
-                      crs2010)
-write.csv(crspanel, "./crs/crs_08-10.csv", row.names = F)
-rm(list=ls())
-
-crspanel <- bind_rows(crs2011,
-                      crs2012,
-                      crs2013)
-write.csv(crspanel, "./crs/crs_11-13.csv", row.names = F)
-rm(list=ls())
-
-crspanel <- bind_rows(crs2014,
-                      crs2015,
-                      crs2016)
-
-write.csv(crspanel, "./crs/crs_14-16.csv", row.names = F)
-rm(list=ls())
-
-# https://stackoverflow.com/questions/27399814/how-to-remove-certain-columns-in-multiple-data-frames-in-r?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
-# https://stackoverflow.com/questions/12664430/delete-a-column-in-a-data-frame-within-a-list?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
-
-crs_73_03 <- read.csv("./crs/crs_73-03.csv", stringsAsFactors = F)
-crs_04_07 <- read.csv("./crs/crs_04-07.csv", stringsAsFactors = F)
-
-crspanel <- bind_rows(crs_73_03,
-                      crs_04_07)
-write.csv(crspanel, "./crs/crs_73-07.csv", row.names = F)
-rm(list=ls())
-
-crs_08_10 <- read.csv("./crs/crs_08-10.csv", stringsAsFactors = F)
-crs_11_13 <- read.csv("./crs/crs_11-13.csv", stringsAsFactors = F)
-crs_14_16 <- read.csv("./crs/crs_14-16.csv", stringsAsFactors = F)
-
-#fixing column names for pre-2010 data
-names(crs_08_10) <- gsub("X.", "",  names(crs_08_10)) %>%
-  gsub('.{1}$', '', .)
-
-crspanel <- bind_rows(crs_08_10,
-                      crs_11_13,
-                      crs_14_16) %>%
-  select(-LongDescription)
-
-write.csv(crspanel, "./crs/crs_08-16.csv", row.names = F)
-rm(list=ls())
-
-
-### binding everything together
-
-crs_73_07 <- read.csv("./crs/crs_73-07.csv", stringsAsFactors = F)
-names(crs_73_07) <- gsub("X.", "",  names(crs_73_07)) %>%
-  gsub('.{1}$', '', .)
-crs_73_07 <- crs_73_07 %>% 
-  select(-LongDescription)
-
-crs_08_16 <- read.csv("./crs/crs_08-16.csv", stringsAsFactors = F)
-
-crspanel <- bind_rows(crs_73_07,
-                      crs_08_16)
-write.csv(crspanel, "./crs/crspanel.csv", row.names = F)
-rm(crs_73_07, crs_08_16)
-
-## we also need to remove the column LongDescription (which contains a paragraph each and is taking up too much space)
 
 
 ######## Change country name to cowcode ########
