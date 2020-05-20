@@ -40,16 +40,18 @@ Country range: All possible countries where data is available
 
 Main dataset: CRS dataset has international aid data collected by the OECD (1973-2016)
 
+  - Information about this dataset can be found here: http://www.oecd.org/dac/stats/crsguide.htm
+
 Other datasets:
 
   - 
 
 
 
-### 1. Importing and cleaning the CRS data
+### 1. Importing and cleaning the CRS data from the OECD
 
 ```{r}
-##Import data
+##Import CRS data
 
 #get the list of CRS csv files using file name patterns of the CRS data files
 crs_files <- list.files(path = ".",
@@ -75,100 +77,107 @@ all(apply(crs_column_names,
           crs_column_names[,1])) # should be TRUE
 
 #binding all the separate data frames together into a list
-crspanel <- bind_rows(crs_data)
+crspanel <- bind_rows(crs_data) %>%
+  rename_all(~ str_sub(., 3, -2)) #change column name format from "X.variableName." to "variableName" via string subsetting
 
 
 #deleting the list from the environment because it is very large
 rm(crs_data)
 
 #saving the resulting single datafram as a csv so that this slow process does not have to be repeated
-write.csv(crspanel, "./crs/crspanel.csv", row.names = F)
+#write.csv(crspanel, "./crs/crspanel.csv", row.names = F) #commented out because this is memory intensive
 
 ```
 
 
 
-
 ```{r}
 
+## Clean CRS data
+  #Note: the warning for countrycode() shows that the unmatched "countries" are only very small islands/territories or non-country entities (regions, donor organizations)
 
-######## Change country name to cowcode ########
-#we do this because OECD has their own country code 
-
-##donors##
-
-countries_cow_crsdonor <- unique(countrycode(crspanel$DonorName, "country.name", "cown", warn = TRUE ))
-countries_cow_crsdonor <- countries_cow_crsdonor[!countries_cow_crsdonor == ""]
-countries_cow_crsdonor <- countries_cow_crsdonor[!is.na(countries_cow_crsdonor)]
-
-crspanel$ccodedonor <- countrycode(crspanel$DonorName, "country.name", "cown", warn = TRUE )
-
-##recipients##
-countries_cow_crsrecipient <- unique(countrycode(crspanel$RecipientName, "country.name", "cown", warn = TRUE ))
-countries_cow_crsrecipient <- countries_cow_crsrecipient[!countries_cow_crsrecipient == ""]
-countries_cow_crsrecipient <- countries_cow_crsrecipient[!is.na(countries_cow_crsrecipient)]
-
-crspanel$ccoderecipient <- countrycode(crspanel$RecipientName, "country.name", "cown", warn = TRUE )
-#we need to code Serbia separately, because cow code uses the same code for the former Yugoslavia
-crspanel$ccoderecipient[crspanel$RecipientName == "Serbia"] <- 345 
-
-
-##let's make sure that only the non-countries or very small countries (islands) will be removed
-#donors that will be removed
-as.vector(unique(filter(crspanel, is.na(ccodedonor))$DonorName))
-
-#recipients that will be removed
-as.vector(unique(filter(crspanel, is.na(ccoderecipient))$RecipientName))
-#looks good
-
-
-
-####### Clean the CRS data ########
-##Info about CRS data: http://www.oecd.org/dac/stats/crsguide.htm
-
-crspanel <- read.csv("./crs/crspanel.csv", stringsAsFactors = F)
+#1. Convert all aid amount values to 2016 constant USD. For this we need to create a table of deflators for all years and all currencies in the data. Using deflators to convert current (at the time of record) values to constant values takes out the variation that comes from inflation and exchange rates 
+  #The deflator data comes from OECD (https://stats.oecd.org/Index.aspx?DataSetCode=DACDEFL)
 
 #deflators in 2016 constant USD
-deflators <- read_excel("../oecd/Deflators-base-2016.xls", skip = 2) %>%
-  rename(countryname = X__1) %>%
-  select(-X__2) %>%
-  filter(!is.na(`1960`) & 
-           !(countryname %in% c("TOTAL DAC", "EU Institutions"))) %>%
-  gather(year, deflator, -countryname) %>%
-  mutate(ccode1 = countrycode(countryname, "country.name", "cown"),
-         deflator = deflator/100,
+deflators <- read_xls("../oecd/Deflators-base-2016.xls", 
+                        skip = 2) %>%
+  rename(country_name = 1) %>%
+  select(-ncol(.)) %>%
+  filter(!is.na(`1960`) & !(country_name %in% c("TOTAL DAC", #removing non country, notes, and empty rows
+                                                "EU Institutions"))) %>%
+  gather(year, #gather the dataframe so that the columns are country_name, year, deflator
+         deflator, 
+         -country_name) %>%
+  mutate(cow_code = countrycode(country_name, #adding the country COW code
+                                "country.name", 
+                                "cown"),
+         deflator = deflator/100, #the deflator shows value of $100 in 2016 constant USD. change the baseline to $1.
          year = as.numeric(year))
 
-  
 
 
+#2. Combine deflators and clean the CRS dataset 
 
-#let's get an idea of the other aid
-aid_type_count <- crspanel %>% 
-  select(usd_disbursement,
-         SectorCode,
-         SectorName) %>%
-  group_by(SectorName, SectorCode) %>%
-  summarise(count = n(),
-            usd_disbursement = sum(usd_disbursement, na.rm = T)) %>%
-  filter(SectorCode != 998 & #998 is for unspecified aid
-           SectorName != "") %>% #one field was left blank (very small, 10 count)
-  mutate(aidtype = case_when(SectorCode %in% c(100:140, 152, 160) ~ "social_aid",
+#crspanel <- read.csv("./crs/crspanel.csv", stringsAsFactors = F)
+
+crs_panel_clean <- crspanel %>%
+  mutate(cow_donor = countrycode(DonorName, #add donor country COW codes to enable merging with other country-level datasets
+                                 "country.name",
+                                 "cown",
+                                 warn = T),
+         cow_recipient = case_when(RecipientName == "Serbia" ~ 345L, #Serbia coded separately due to Yugoslavia duplication
+                                   TRUE ~ countrycode(RecipientName, #add recipient country COW codes.
+                                                      "country.name",
+                                                      "cown",
+                                                      warn = T)),
+         aid_type = case_when(SectorCode %in% c(100:140, 152, 160) ~ "social_aid", #source for categorization? Check paper
                              SectorCode %in% c(150,151) ~ "democracy_aid",
                              SectorCode %in% c(200:250) ~ "econ_capacity_aid",
                              SectorCode %in% c(300:332) ~ "production_aid",
                              SectorCode %in% c(500:600) ~ "program_aid",
                              SectorCode %in% c(720:740) ~ "disaster_aid",
-                             TRUE ~ "other_aid")) %>%
-  ungroup()
-#checked that all channels(sub-sectors) belong to some sector
+                             SectorCode == 998 ~ "unspecified_aid",
+                             TRUE ~ "other_aid")) %>% #I verified that all channels (sub-sectors) belonged to some aid sector
+  left_join(select(deflators, #add the deflators to use for conversion later
+                   -country_name),
+            by = c("Year" = "year", 
+                   "cow_donor" = "cow_code")) %>%
+  filter(!is.na(aid_type) &
+           SectorCode != 998 & #998 is for unspecified aid
+           SectorName != "" & #one field name was left blank (only occurred 10 times)
+           !is.na(cow_donor) & 
+           !is.na(cow_recipient)) %>% #Filter out all the non-countries
+  select(Year,
+         cow_donor,
+         cow_recipient,
+         aid_type,
+         usd_disbursement,
+         usd_commitment,
+         deflator) %>%
+  rename(year = Year,
+         ccode1 = cow_donor,
+         ccode2 = cow_recipient,
+         aid_disburse = usd_disbursement,
+         aid_commit = usd_commitment) %>%
+  mutate(aid_disburse = aid_disburse/deflator, #converting to 2016 constant USD
+         aid_commit = aid_commit/deflator) %>%
+  group_by(ccode1, ccode2, year, aid_type) %>%
+  summarise(aid_disburse = sum(aid_disburse, na.rm = T),
+            aid_commit = sum(aid_commit, na.rm = T)) %>%
+  pivot_wider(names_from = aid_type, #spread data s.t each combination of aid type by disbursement/commitment has a colum
+              values_from = c(aid_disburse,
+                              aid_commit),
+              names_sep = "_") %>%
+  replace(is.na(.),
+          0)
+  
+#Todo (after May 20): figure out why crs_panel_clean has fewer values than crsall_sp  
 
-#quick pie chart
-ggplot(aid_type_count, aes(x = "", y = usd_disbursement, fill = aidtype)) +
-  geom_bar(stat = "identity") +
-  coord_polar("y", start=0)
 
 
+
+####### (OLD) Clean the CRS data ########
 #### begin Dec 16 to crs data
 #we need all sectors of aid
 
@@ -181,7 +190,7 @@ crsall <- left_join(crspanel,
            SectorCode != 998 & #998 is for unspecified aid
            SectorName != "" & #one field name was left blank (very small, 10 count))
            !is.na(ccodedonor) & 
-           !is.na(ccoderecipient) & #Filter out all the non-countries
+           !is.na(ccoderecipient) %>% #Filter out all the non-countries
            !(is.na(usd_disbursement) & is.na(usd_commitment))) %>% 
   select(Year,
          ccodedonor,
@@ -200,7 +209,7 @@ crsall <- left_join(crspanel,
                    deflator),
             by = c("year", "ccode1")) %>% #deflating aid according to CRS deflators for donor-year
   mutate(aid_disburse = aid_disburse/deflator,
-         aid_commit = aid_commit/deflator)
+         aid_commit = aid_commit/deflator) 
 
 
   
