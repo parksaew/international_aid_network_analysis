@@ -54,7 +54,7 @@ Other datasets:
 ##Import CRS data
 
 #get the list of CRS csv files using file name patterns of the CRS data files
-crs_files <- list.files(path = ".",
+crs_files <- list.files(path = "./raw_data",
                         pattern = ".*CRS.*data\\.txt",
                         full.names = T)
 
@@ -158,119 +158,24 @@ crs_panel_clean <- crspanel %>%
   rename(year = Year,
          ccode1 = cow_donor,
          ccode2 = cow_recipient,
-         aid_disburse = usd_disbursement,
-         aid_commit = usd_commitment) %>%
-  mutate(aid_disburse = aid_disburse/deflator, #converting to 2016 constant USD
-         aid_commit = aid_commit/deflator) %>%
+         disburse = usd_disbursement,
+         commit = usd_commitment) %>%
+  mutate(disburse = disburse/deflator, #converting to 2016 constant USD
+         commit = commit/deflator) %>%
   group_by(ccode1, ccode2, year, aid_type) %>%
-  summarise(aid_disburse = sum(aid_disburse, na.rm = T),
-            aid_commit = sum(aid_commit, na.rm = T)) %>%
+  summarise(disburse = sum(disburse, na.rm = T),
+            commit = sum(commit, na.rm = T)) %>%
   pivot_wider(names_from = aid_type, #spread data s.t each combination of aid type by disbursement/commitment has a colum
-              values_from = c(aid_disburse,
-                              aid_commit),
+              values_from = c(disburse,
+                              commit),
               names_sep = "_") %>%
-  replace(is.na(.),
-          0)
-  
-#Todo (after May 20): figure out why crs_panel_clean has fewer values than crsall_sp  
-
-
-
-
-####### (OLD) Clean the CRS data ########
-#### begin Dec 16 to crs data
-#we need all sectors of aid
-
-crsall <- left_join(crspanel,
-                    select(aid_type_count,
-                           SectorCode,
-                           aidtype),
-                    by = "SectorCode") %>%
-  filter(!is.na(aidtype) &
-           SectorCode != 998 & #998 is for unspecified aid
-           SectorName != "" & #one field name was left blank (very small, 10 count))
-           !is.na(ccodedonor) & 
-           !is.na(ccoderecipient) %>% #Filter out all the non-countries
-           !(is.na(usd_disbursement) & is.na(usd_commitment))) %>% 
-  select(Year,
-         ccodedonor,
-         ccoderecipient,
-         aidtype,
-         usd_disbursement,
-         usd_commitment) %>%
-  rename(year = Year,
-         ccode1 = ccodedonor,
-         ccode2 = ccoderecipient,
-         aid_disburse = usd_disbursement,
-         aid_commit = usd_commitment) %>%
-  left_join(select(deflators,
-                   year, 
-                   ccode1,
-                   deflator),
-            by = c("year", "ccode1")) %>% #deflating aid according to CRS deflators for donor-year
-  mutate(aid_disburse = aid_disburse/deflator,
-         aid_commit = aid_commit/deflator) 
-
-
-  
-#divide into disbursement and commitments, spread into sectors and then merge again
-crsall_dis <- crsall %>%
-  select(year,
-         ccode1,
-         ccode2,
-         aid_disburse,
-         aidtype) %>%
-  filter(!is.na(aid_disburse)) %>%
-  group_by(ccode1, ccode2, year, aidtype) %>%
-  summarise(aid_disburse = sum(aid_disburse, na.rm = T)) %>%
-  spread(aidtype, aid_disburse, fill = 0) %>% #because 0 aid was not recorded (all NAs were already removed)
-  rename_at(vars(-ccode1, -ccode2, -year), funs(paste0(.,"_disb"))) %>%
   ungroup() %>%
-  group_by(ccode1, ccode2) %>%
-  complete(year = 1973:2016, fill = list(democracy_aid_disb = 0,
-                                         disaster_aid_disb = 0,
-                                         econ_capacity_aid_disb = 0,
-                                         other_aid_disb = 0,
-                                         production_aid_disb = 0,
-                                         program_aid_disb = 0,
-                                         social_aid_disb = 0))
+  group_by(ccode1,
+           ccode2) %>%
+  complete(year = 1973:2016) %>%
+  replace(is.na(.), 0)
 
 
-crsall_com <- crsall %>%
-  select(year,
-         ccode1,
-         ccode2,
-         aid_commit,
-         aidtype) %>%
-  filter(!is.na(aid_commit)) %>%
-  group_by(ccode1, ccode2, year, aidtype) %>%
-  summarise(aid_commit = sum(aid_commit, na.rm = T)) %>%
-  spread(aidtype, aid_commit, fill = 0) %>% #because 0 aid was not recorded (all NAs were already removed)
-  rename_at(vars(-ccode1, -ccode2, -year), funs(paste0(.,"_com"))) %>%
-  ungroup() %>%
-  group_by(ccode1, ccode2) %>%
-  complete(year = 1973:2016, fill = list(democracy_aid_com = 0,
-                                         disaster_aid_com = 0,
-                                         econ_capacity_aid_com = 0,
-                                         other_aid_com = 0,
-                                         production_aid_com = 0,
-                                         program_aid_com = 0,
-                                         social_aid_com = 0))
-  
-
-#now merge the spread data for both commitments and disbursements
-crsall_sp <- full_join(crsall_com,
-                       crsall_dis,
-                       by = c("ccode1",
-                              "ccode2",
-                              "year")) %>%
-  filter(year > 1985) %>%
-  replace_na(list(democracy_aid_com = 0,
-             democracy_aid_disb = 0))
-  
-
-
-### end dec 16 edit
 
 
 # I will limit my dataset to a timeframe of 1990-2014
