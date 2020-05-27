@@ -25,10 +25,35 @@ lead <- dplyr::lead
 
 
 ```{r}
+
+#bigrquery only supports uploading tables up to 1 GB. crspanel is 2.5 GB so I will export it as a csv and upload it using the UI
+  #bigQueryR is another package that connects R to BigQuery, and seems to allow bigger uploads. Could be something to consider in the future
+
+#it also seems to be better practice to upload to Google Cloud Storage and then into BigQuery. The R package for this is googleCloudStorageR
+
+#current set-up:
+  #crspanel exported as crspanel.csv to ./processed_data
+  #crspanel uploaded to GCS in large_processed_data bucket
+  #crspanel dataset pushed as a table in BigQuery (linking GCS and BigQuery)
+  #crspanel data to be accessed via BigQuery for analysis
+
+#resources:
+  #https://cran.r-project.org/web/packages/bigrquery/bigrquery.pdf
+  #https://www.rdocumentation.org/packages/bigrquery/versions/1.2.0
+  #uploading: https://rdrr.io/cran/bigrquery/man/api-table.html
+  #bigQueryR uploading: https://rdrr.io/cran/bigQueryR/man/bqr_upload_data.html
+  #googleCloudStorage: http://code.markedmondson.me/googleCloudStorageR/articles/googleCloudStorageR.html 
+
 #bigquery authentication
-bq_auth(use_oob = TRUE)
+#bq_auth(use_oob = TRUE) #not sure if I have to keep doing this
+
+gcp_project <- "intl-aid-network-analysis"
 
 
+#test to see that the connection works
+#aa <- bq_project_query(gcp_project, "SELECT Year FROM crs_panel_1973_2016.original_combined_1973_2016 LIMIT 5")
+#bb <- bq_table_download(aa, max_results = 5)
+#works
 
 ```
 
@@ -52,6 +77,7 @@ Main dataset: CRS dataset of international aid data collected by the OECD (1973-
 
   - Information about this dataset can be found here: http://www.oecd.org/dac/stats/crsguide.htm
   - This data was filtered a timeframe of 1990-2014
+  - This data was converted into 2016 USD for all observations
 
 
 Other datasets:
@@ -60,6 +86,9 @@ Other datasets:
     - Has adjusted ideal points and affinity data (s2un, s3un) as well as absolute distances (absidealdiff) 
       - Affinity measures similarity while distance measures dissimilarity
     - Refer to codebook "Ideal_Points_Codebook.pdf"
+    
+  - Polity IV dataset of democracy level (1800-2016)
+    - Refer to codebook "https://www.systemicpeace.org/inscr/p4manualv2016.pdf"
 
 
 connect to bigquery
@@ -103,7 +132,7 @@ crspanel <- bind_rows(crs_data) %>%
 rm(crs_data)
 
 #saving the resulting single datafram as a csv so that this slow process does not have to be repeated
-#write.csv(crspanel, "./crs/crspanel.csv", row.names = F) #commented out because this is memory intensive
+#write.csv(crspanel, "./processed_data/crspanel.csv", row.names = F) #commented out because this is memory intensive
 
 ```
 
@@ -114,30 +143,25 @@ rm(crs_data)
 ## Clean CRS data
   #Note: the warning for countrycode() shows that the unmatched "countries" are only very small islands/territories or non-country entities (regions, donor organizations)
 
-#1. Convert all aid amount values to 2016 constant USD. For this we need to create a table of deflators for all years and all currencies in the data. Using deflators to convert current (at the time of record) values to constant values takes out the variation that comes from inflation and exchange rates 
+#1. Convert all aid amount values to 2016 constant USD. For this we need to create a table of deflators for all years. Using deflators to convert current (at the time of record) values to constant values takes out the variation that comes from inflation and exchange rates. We don't need to worry about exchange rate because the amounts are already in USD 
   #The deflator data comes from OECD (https://stats.oecd.org/Index.aspx?DataSetCode=DACDEFL)
+  #"Unless otherwise stated, aid activity data are expressed in United States dollars (USD) at the exchange rate prevailing in the year of the flow i.e. in current dollars." - https://www.oecd.org/dac/stats/crsguide.htm
 
 #deflators in 2016 constant USD
 deflators <- read_xls("./raw_data/oecd/Deflators-base-2016.xls", 
                         skip = 2) %>%
   rename(country_name = 1) %>%
-  select(-ncol(.)) %>%
-  filter(!is.na(`1960`) & !(country_name %in% c("TOTAL DAC", #removing non country, notes, and empty rows
-                                                "EU Institutions"))) %>%
+  select(-ncol(.)) %>% #removing the last column which just repeats the country name
+  filter(country_name == "United States") %>%
   gather(year, #gather the dataframe so that the columns are country_name, year, deflator
          deflator, 
          -country_name) %>%
-  mutate(cow_code = countrycode(country_name, #adding the country COW code
-                                "country.name", 
-                                "cown"),
-         deflator = deflator/100, #the deflator shows value of $100 in 2016 constant USD. change the baseline to $1.
+  mutate(deflator = deflator/100, #the deflator shows value of $100 in 2016 constant USD. change the baseline to $1.
          year = as.numeric(year))
 
 
 
 #2. Combine deflators and clean the CRS dataset 
-
-#crspanel <- read.csv("./crs/crspanel.csv", stringsAsFactors = F) #only run when restarting environment
 
 crs_panel_clean <- crspanel %>%
   mutate(cow_donor = countrycode(DonorName, #add donor country COW codes to enable merging with other country-level datasets
@@ -158,9 +182,8 @@ crs_panel_clean <- crspanel %>%
                              SectorCode == 998 ~ "unspecified_aid",
                              TRUE ~ "other_aid")) %>% #I verified that all channels (sub-sectors) belonged to some aid sector
   left_join(select(deflators, #add the deflators to use for conversion later
-                   -country_name), # **** CHECK HOW MANY are not matched (only 29 currencies here)**** may need new deflators
-            by = c("Year" = "year", 
-                   "cow_donor" = "cow_code")) %>%
+                   -country_name), 
+            by = c("Year" = "year")) %>%
   filter(!is.na(aid_type) &
            SectorCode != 998 & #998 is for unspecified aid
            SectorName != "" & #one field name was left blank (only occurred 10 times)
@@ -176,7 +199,7 @@ crs_panel_clean <- crspanel %>%
   rename(year = Year,
          ccode1 = cow_donor,
          ccode2 = cow_recipient,
-         disburse = usd_disbursement,
+         disburse = usd_disbursement, # so only usd deflators should be used******
          commit = usd_commitment) %>%
   mutate(disburse = disburse/deflator, #converting to 2016 constant USD
          commit = commit/deflator) %>%
@@ -193,6 +216,9 @@ crs_panel_clean <- crspanel %>%
   complete(year = 1973:2016) %>% #creates rows for "missing" years - we assume that there was no aid in the missing years
   replace(is.na(.), 0) #fills in the values for the rows that were just created
 
+
+#deleting the crspanel df from the environment because it is very large. Can be queried through bigrquery
+rm(crspanel)
 
 #crscollapsed <- filter(crscollapsed, year > 1989 & year < 2015) #VERIFY if this is still needed
 
@@ -231,6 +257,8 @@ ideal_points_clean <- select(ideal_points,
          ipfd_3 = lag(ipfd, order_by = year, n = 3),
          ipfd_5 = lag(ipfd, order_by = year, n = 5)) 
 
+#write.csv(ideal_points_clean, "./processed_data/ideal_points_expanded.csv", row.names = F) #commented out because this is memory intensive
+
 
 ```
 
@@ -258,8 +286,7 @@ Start of ORGB 708 code
 
 ```{r}
 
-#We will merge several country-year datasets together. First, we create a skeleton of just the index variables
-
+#To build a dataset of controls, We will merge several country-year datasets together. First, we create a skeleton of just the index variables and use it as the left table of the left joins that are implemented.
 controls_index <- codelist_panel %>% #country-year DF from the countrycode package
   select(country.name.en,
          country.name.en.regex,
@@ -272,6 +299,7 @@ controls_index <- codelist_panel %>% #country-year DF from the countrycode packa
   
 
 
+#May27 - I think I just don't use this at all in the end
 #Savun_Tirone_2011_AJPS_Replication_Dataset <- read_dta("Savun-Tirone 2011 AJPS Replication Dataset.dta")
 #savun_data_base <- Savun_Tirone_2011_AJPS_Replication_Dataset
 
@@ -289,8 +317,7 @@ countries <- countries_chr
 
 #deleting NAs
 
-#cow_code <- unique(Savun_Tirone_2011_AJPS_Replication_Dataset$recipient_cowcode)
-cow_code <- countries_cow
+#cow_code <- unique(Savun_Tirone_2011_AJPS_Replication_Dataset$recipient_cowcode)cow_code <- countries_cow
 
 
 
@@ -304,45 +331,40 @@ cow_code <- countries_cow
 ```{r}
 
 #polityIV
-#1989-2016
+#1800-2016
 
-original_polity_4v2016 <- read_excel("polity_4v2016.xls")
+polity_4v2016 <- read_excel("./raw_data/polity_4v2016.xls")
 
-polity_2016_base <- original_polity_4v2016
-#making a copy
+#Note that the dataset authors discourage the use of the polity metric because they believe that autocracy and democracy don't necessarily cancel out.
+polity_clean <- polity_4v2016 %>%
+  select(ccode, #country code is in CoW
+         country, 
+         year, 
+         democ, #measure of democracy
+         autoc, #measure of autocracy
+         polity, #democracy - autocracy.
+         polity2) %>% #This revised polity version fixes values like -77
+  arrange(ccode,
+          year) #need to check for missing sequence
 
+  mutate(polity = ifelse(polity < -10, 
+                         NA,
+                         polity) #the first polity version has values like -66, so let's make them NAs
+         ) 
+  
 
-polity_2016 <- polity_2016_base[polity_2016_base$year %in% c(1988:2016),]
-#polity_2016 <- polity_2016[polity_2016$country %in% countries,] (use cowcode instead)
-polity_2016 <- polity_2016[polity_2016$ccode %in% cow_code,] 
-#creating a new dataset with the years and countries we are interested in
-#for polity I start with 1988 because the democratization variables is calculated using value from two years prior
+#to check that all years are there within groups    
+check_missing_sequence <- function(x) {
+  missing_seq <- setdiff(min(x):max(x), x)
+  if(length(missing_seq > 0)) {
+    return(TRUE)
+    } else {
+    return(FALSE)
+    }
+  }
+  
+check_missing_sequence(c(1,2,3,4))
 
-
-
-#let's see how many countries are included here
-length(unique(polity_2016$ccode))
-#there are 142, which means that  37 countries are missing in the polity data
-
-#let's check which countries are missing
-
-cow_code %in% unique(polity_2016$ccode)
-#this only gives me T/F, need to match names
-
-missing_ccode_polity <- setdiff(cow_code, unique(polity_2016$ccode))
-#this gives me the names of the countries that are missing from Polity
-#some of these are very small countries but others are countries that may go by other names
-
-#missing_cname_polity <- savun_data_base[match(missing_ccode_polity, cow_code savun_data_base$recipient_cowcode), #"recipient_country"]
-#missing_cname_polity
-#most of these are small countries
-#can't do anything about these, data is missing
-#but it is good to know what they are
-
-class(polity_2016)
-
-#now let's select just the variables we are interested in so that we can use it to build our dataset
-polity_2016_final <- dplyr::select(polity_2016, cyear, ccode, scode, country, year, polity, polity2)
 
 #the first polity values have values like -66, let's make them NAs
 polity_2016_final$polity[polity_2016_final$polity < -10] = NA
