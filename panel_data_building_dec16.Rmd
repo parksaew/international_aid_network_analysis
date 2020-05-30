@@ -345,7 +345,12 @@ polity_clean <- polity_4v2016 %>%
          polity, #democracy - autocracy.
          polity2) %>% #This revised polity version fixes values like -77
   arrange(ccode,
-          year) #need to check for missing sequence
+          year) 
+
+ #need to check for missing sequence 
+  mutate(ccode = as.factor(ccode)) %>%
+  group_by(ccode)
+
 
   mutate(polity = ifelse(polity < -10, 
                          NA,
@@ -356,15 +361,30 @@ polity_clean <- polity_4v2016 %>%
 #to check that all years are there within groups    
 check_missing_sequence <- function(x) {
   missing_seq <- setdiff(min(x):max(x), x)
-  if(length(missing_seq > 0)) {
-    return(TRUE)
-    } else {
-    return(FALSE)
-    }
+  return(missing_seq)
   }
   
-check_missing_sequence(c(1,2,3,4))
+check_missing_sequence(c(4,1,2,3,7))
 
+missing_polity_years <- polity_clean %>%
+  group_by(ccode, country) %>%
+  summarise(year_sequence = paste(check_missing_sequence(year), collapse=",")) %>%
+  filter(year_sequence != "")
+
+missing_polity_years[1,]$year_sequence
+
+aa <- polity_clean %>%
+  select(ccode,
+         country,
+         year) %>%
+  with(., split(year, ccode))
+
+bb <- lapply(with(polity_clean,
+                  split(year,
+                        ccode)),
+             check_missing_sequence)
+
+bb[sapply(bb, function(x) all(x[[all_elements]] == NULL))] #figure this out so that we can create a polity df with all years-country as sequence
 
 #the first polity values have values like -66, let's make them NAs
 polity_2016_final$polity[polity_2016_final$polity < -10] = NA
