@@ -336,75 +336,74 @@ countries <- countries_chr
 polity_4v2016 <- read_excel("./raw_data/polity_4v2016.xls")
 
 #Note that the dataset authors discourage the use of the polity metric because they believe that autocracy and democracy don't necessarily cancel out.
-polity_clean <- polity_4v2016 %>%
+polity_year_uncorrected <- polity_4v2016 %>%
   select(ccode, #country code is in CoW
          country, 
          year, 
          democ, #measure of democracy
          autoc, #measure of autocracy
          polity, #democracy - autocracy.
-         polity2) %>% #This revised polity version fixes values like -77
-  arrange(ccode,
-          year) 
-
- #need to check for missing sequence 
-  mutate(ccode = as.factor(ccode)) %>%
-  group_by(ccode)
-
-
+         polity2) %>% #This revised polity version (2) fixes values like -77
   mutate(polity = ifelse(polity < -10, 
                          NA,
-                         polity) #the first polity version has values like -66, so let's make them NAs
-         ) 
+                         polity)) #the polity version 1 has values like -66, so let's make them NAs
+#because we are going to apply lags and create variables for differences, we need to make sure that all the years are present without gaps
   
 
-#to check that all years are there within groups    
+#function to check that a vector consists of all whole numbers between the smallest and biggest values present
 check_missing_sequence <- function(x) {
   missing_seq <- setdiff(min(x):max(x), x)
-  return(missing_seq)
+  if(length(missing_seq) > 0) {
+    return(missing_seq)
+  } else {
+    return(NULL)
   }
+}
   
-check_missing_sequence(c(4,1,2,3,7))
+#function that takes a list of length 1 from the list of vectors (because we need to use [] instead of [[]] to preserve the vector name) and generates a dataframe with the list element name (which is the ccode in this case) as the first column ("index1") and the vector content as the second column ("index2"). This can be used as an index to insert into DFs.
+list_2_indices <- function(x) {
+  index_df <- data.frame(index1 = names(x),
+                         x) %>%
+    rename(index2 = 2)
+  return(index_df)
+}
 
-missing_polity_years <- polity_clean %>%
-  group_by(ccode, country) %>%
-  summarise(year_sequence = paste(check_missing_sequence(year), collapse=",")) %>%
-  filter(year_sequence != "")
 
-missing_polity_years[1,]$year_sequence
+#create a list of vectors of missing years for each ccode (if there are missing years)
+polity_missing_year_list <- lapply(with(polity_year_uncorrected,
+                                        split(year,
+                                              ccode)),
+                                   check_missing_sequence) %>%
+  compact()
 
-aa <- polity_clean %>%
-  select(ccode,
-         country,
-         year) %>%
-  with(., split(year, ccode))
 
-bb <- lapply(with(polity_clean,
-                  split(year,
-                        ccode)),
-             check_missing_sequence)
+#create an empty DF to fill in with missing ccode-year combinations in the following for-loop
+polity_missing_indices <- data.frame(ccode = integer(),
+                                     year = integer())
 
-bb[sapply(bb, function(x) all(x[[all_elements]] == NULL))] #figure this out so that we can create a polity df with all years-country as sequence
+#fill in the empty df polity_missing_indices with missing ccode-year combinations using list_2_indices for each 
+for (i in seq(1:length(ab))) {
+  country_year_list <- ab[i]
+  new_country_df <- list_2_indices(country_year_list) %>%
+    rename(ccode = index1,
+           year = index2) %>%
+    mutate(ccode = as.numeric(as.character(ccode)))
+  polity_missing_indices <- bind_rows(polity_missing_indices,
+                                      new_country_df)
+}
 
-#the first polity values have values like -66, let's make them NAs
-polity_2016_final$polity[polity_2016_final$polity < -10] = NA
-
-#first create ordinal democratization values for polity1. current value - value two years prior
-polity_2016_final$polity1_dem_ord <- ave(polity_2016_final$polity, polity_2016_final$ccode, FUN=function(x) c(0,0, diff(x,lag=2)))
-
-#then make this a dummy variable (this is one was used in savun)
-polity_2016_final$polity1_dem <- as.numeric(polity_2016_final$polity1_dem_ord >= 3)  
-
-#do the same as above for polity2
-polity_2016_final$polity2_dem_ord <- ave(polity_2016_final$polity2, polity_2016_final$ccode, FUN=function(x) c(0,0, diff(x,lag=2)))
-polity_2016_final$polity2_dem <- as.numeric(polity_2016_final$polity2_dem_ord >= 3)  
-
-#finally, delete the 1988 data and rename ccode to cowcode
-polity_2016_final <- polity_2016_final[polity_2016_final$year %in% years,]
-polity_2016_final <- rename(polity_2016_final, c("ccode" = "cowcode"))
-
-#looks good
-
+polity_clean <- polity_year_uncorrected %>%
+  full_join(polity_missing_indices,
+            by = c("ccode", "year")) %>% #adding missing years so that the year sequences are gapless
+  arrange(ccode,
+          year) %>%
+  fill(country) %>% #filling in missing "country" values with previous value, other missing variables should remain as NAs
+  group_by(ccode) %>%
+  mutate(polity1_dem_ord = polity - lag(polity, 2), #ordinal values for democratization as change compared to 2 years prior
+         polity1_dem = as.numeric(polity1_dem_ord >= 3), #turning polity1_dem_ord as a dummy variable (same threshold as Savun's)
+         polity2_dem_ord = polity2 - lag(polity2, 2), #same for polity2
+         polity2_dem = as.numeric(polity2_dem_ord >= 3))
+  
 
 ```
 
