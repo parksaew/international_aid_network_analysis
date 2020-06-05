@@ -89,6 +89,9 @@ Other datasets:
     
   - Polity IV dataset of democracy level (1800-2016)
     - Refer to codebook "https://www.systemicpeace.org/inscr/p4manualv2016.pdf"
+    
+  - Penn World Tables (V 9.0) (1950-2014)
+    - Information about the data can be found here "https://www.rug.nl/ggdc/productivity/pwt/pwt-releases/pwt9.0"
 
 
 connect to bigquery
@@ -382,8 +385,8 @@ polity_missing_indices <- data.frame(ccode = integer(),
                                      year = integer())
 
 #fill in the empty df polity_missing_indices with missing ccode-year combinations using list_2_indices for each 
-for (i in seq(1:length(ab))) {
-  country_year_list <- ab[i]
+for (i in seq(1:length(polity_missing_year_list))) {
+  country_year_list <- polity_missing_year_list[i]
   new_country_df <- list_2_indices(country_year_list) %>%
     rename(ccode = index1,
            year = index2) %>%
@@ -408,76 +411,55 @@ polity_clean <- polity_year_uncorrected %>%
 ```
 
 
+
 ```{r}
 
 
-#Penn World Tables
-#GDP, GDPgrowth, population
+#Penn World Tables (version 9.0): 
+  # years: 1950 - 2014, 182 countries
+#Relevant variables: GDP (real gdp from expensidure side), GDP growth, population, donor GDP (as defined by Savun's paper)
 
-pwt90 <- read_excel("pwt90.xlsx", sheet = "Data")
-#View(pwt90)
-
-pennwt_9 <- pwt90[pwt90$year %in% years,]
-#dataset with the years we are interested in
-
-#here countries are coded by ISO, while savun's original data uses COW
-#we need to translate between the two
-
-pwt_cowcode <- countrycode(pennwt_9$countrycode, "iso3c", "cown", warn = TRUE)
-pennwt_9 <- cbind(pwt_cowcode, pennwt_9)
-#creating cow codes for pwt and binding the cow codes to the pwt dataframe
-#now we can choose just the countries we need
-
-pennwt_9 <- pennwt_9[pennwt_9$pwt_cowcode %in% cow_code,] 
-#creating a new dataset with the years and countries we are interested in
-
-#let's see how many countries are included here
-length(unique(pennwt_9$countrycode))
-#there are 146, which means that  33 countries are missing in the PWT data
-
-#let's check which countries are missing
-missing_ccode_pennwt <- setdiff(cow_code, unique(pennwt_9$pwt_cowcode))
-#this gives me the names of the countries that are missing from Polity
+pwt90 <- read_excel("./raw_data/pwt90.xlsx", 
+                    sheet = "Data")
 
 
-#now let's select just the variables we are interested in so that we can use it to build our dataset
-pennwt_9_final <- dplyr::select(pennwt_9, pwt_cowcode, countrycode, country, year, rgdpe, pop)
-
-#we need additional variables
-#first, GDP per capita is needed
-#both are in millions so I just divide
-pennwt_9_final$rgdp_pc <- pennwt_9_final$rgdpe/pennwt_9_final$pop
-
-#then we need real gdp growth rate
-pennwt_9_final<- ddply(pennwt_9_final,"pwt_cowcode",transform, rgdppc_growth=c(NA,exp(diff(log(rgdp_pc)))-1))
-#calculates growth by getting the differences of logs and exponentiating them. In the end, it is basically (a/b) - 1.
-#the pwt data used by savun was in percentages, so we should change it to percentages as well
-pennwt_9_final$rgdppc_growth <- pennwt_9_final$rgdppc_growth*100
-
-#we also need another population column that is in thousands and logged
-pennwt_9_final$population <- log(pennwt_9_final$pop*1000)
-
-#lastly, donor gdp can also be calculated through pwt data
-#we need the logged average of annual sweden,us,and france 1989-2014 (then repeat the data)
-donors <- c("SWE", "USA", "FRA")
-donor_gdp <- filter(pwt90, countrycode %in% donors)
-donor_gdp <- filter(donor_gdp, year %in% years)
-#making a dataframe so that we are looking at just the donors' gdp for our timeframe
-
-donor_gdp <- dplyr::select(donor_gdp, countrycode, year, rgdpe)
-donor_gdp <- spread(donor_gdp, countrycode, rgdpe)
-donor_gdp$donor_gdp <- log(rowMeans(donor_gdp[,-1]))
-
-
-#we use the resulting vector to attach it to the pwt dataset
-donor_gdp_vector <- rep(donor_gdp$donor_gdp, 169)
-#repeating the vector 169 (for all countries) (while keeping the order)
-pennwt_9_final <- cbind(pennwt_9_final, donor_gdp_vector)
-
-#lastly let's rename pwt_cowcode to cowcode for better merging
-pennwt_9_final <- rename(pennwt_9_final, c("pwt_cowcode"="cowcode"))
-
-#looks good
+pennwt_clean <- pwt90 %>%
+  arrange(countrycode,
+          year) %>% #checked that no years were missing
+  group_by(countrycode) %>% #since we will be using lag to calculate gdp growth
+  mutate(cowcode = countrycode(countrycode, #here, countries are coded by ISO, while we use CoW. So we convert them to CoW
+                               "iso3c", 
+                               "cown",
+                               warn = TRUE),
+         rgdpe_per_capita = rgdpe/pop, #to get the gdp per capita, I just divide gdp by population (both are in millions)
+         rgdpe_pc_growth = (exp(log(rgdpe_per_capita) - log(lag(rgdpe_per_capita))) - 1) * 100, #growth: get the differences of logs and exponentiate them. In the end, it is basically (a/b) - 1.
+         #rgdpe_pc_growthB = ((rgdpe_per_capita - lag(rgdpe_per_capita))/ lag(rgdpe_per_capita)) * 100) #alt way to calculate % growth
+         pop_log_1000 = log(pop * 1000)) %>% #population that is in 1000s and logged
+  select(cowcode,
+         country,
+         year,
+         rgdpe, #real GDP from expenditure side
+         rgdpe_per_capita,
+         rgdpe_pc_growth,
+         pop,
+         pop_log_1000) %>%
+  ungroup() %>%
+  left_join(pwt90 %>% #we also need to get the donor gdp as it was used in Savun's paper: the logged gdp average of SWE, US, FRA
+              filter(countrycode %in% c("SWE", "USA", "FRA")) %>% #this variable was calculated by using a new DF since we need the same values for all countries
+              select(countrycode,
+                     year,
+                     rgdpe) %>%
+              arrange(year) %>%
+              pivot_wider(names_from = countrycode,
+                          values_from = rgdpe) %>%
+              mutate(savun_donor_rgdpe_log = log(rowMeans(select(.,
+                                                                 SWE,
+                                                                 USA,
+                                                                 FRA)))) %>%
+              select(-c(SWE,
+                        USA,
+                        FRA)),
+            by = "year")
 
 
 
