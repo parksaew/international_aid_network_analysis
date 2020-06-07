@@ -13,7 +13,7 @@ pacman::p_load(tidyverse,
                haven,
                readxl,
                plm,
-               RcppRoll,
+               #RcppRoll,
                bigrquery) 
 
 
@@ -92,6 +92,9 @@ Other datasets:
     
   - Penn World Tables (V 9.0) (1950-2014)
     - Information about the data can be found here "https://www.rug.nl/ggdc/productivity/pwt/pwt-releases/pwt9.0"
+    
+  - Uppsala Conflict Data Program - Confliect Onset (1946-2014)
+    - Refer to codebook "https://ucdp.uu.se/downloads/onset/UCDP_Onset_Dataset_Codebook_19.1.pdf" (note: codebook is for an updated version of the dataset)
 
 
 connect to bigquery
@@ -289,6 +292,30 @@ Start of ORGB 708 code
 
 ```{r}
 
+
+
+# pacman::p_load(dplyr,
+#                foreign,
+#                tidyverse,
+#                stats,
+#                Zelig,
+#                zeligverse,
+#                haven,
+#                plyr,
+#                tidyr,
+#                boot,
+#                data.table,
+#                popbio,
+#                fmsb,
+#                splines,
+#                readxl,
+#                countrycode,
+#                DataCombine,
+#                DAMisc,
+#                mixAK)
+
+
+
 #To build a dataset of controls, We will merge several country-year datasets together. First, we create a skeleton of just the index variables and use it as the left table of the left joins that are implemented.
 controls_index <- codelist_panel %>% #country-year DF from the countrycode package
   select(country.name.en,
@@ -425,7 +452,7 @@ pwt90 <- read_excel("./raw_data/pwt90.xlsx",
 
 pennwt_clean <- pwt90 %>%
   arrange(countrycode,
-          year) %>% #checked that no years were missing
+          year) %>% #checked that no years were missing using the custom function check_missing_sequence
   group_by(countrycode) %>% #since we will be using lag to calculate gdp growth
   mutate(cowcode = countrycode(countrycode, #here, countries are coded by ISO, while we use CoW. So we convert them to CoW
                                "iso3c", 
@@ -452,13 +479,13 @@ pennwt_clean <- pwt90 %>%
               arrange(year) %>%
               pivot_wider(names_from = countrycode,
                           values_from = rgdpe) %>%
-              mutate(savun_donor_rgdpe_log = log(rowMeans(select(.,
+              mutate(savun_donor_rgdpe_log = log(rowMeans(select(., #this will only differ by year & stay the same for all countries
                                                                  SWE,
                                                                  USA,
                                                                  FRA)))) %>%
               select(-c(SWE,
                         USA,
-                        FRA)),
+                        FRA)), #this results a df that serves the same purpose as a subquery in SQL.
             by = "year")
 
 
@@ -473,13 +500,28 @@ pennwt_clean <- pwt90 %>%
 
 ```{r}
 
-#conflict initiation
-#the cow codes are also used here (called gwno)
 
-ucdp_2014 <- read_csv("ucdp-onset-conf-2014.csv")
+#Conflict Initiation dataset from Uppsala University (1946-2014)
+  #Country code is called "gwno" and this is in CoW. There are 176 countries
+  #Out of 3689 obs, there are only 69 cases of conflict onset and 158 cases of conflict (or new conflict) after more than 2 years of peace
+
+ucdp_2014 <- read_csv("./raw_data/ucdp-onset-conf-2014.csv")
 #View(ucdp_2014)
 
-ucdp_onset_2014 <- ucdp_2014
+ucdp_clean <- ucdp_2014 %>% 
+  select(year, 
+         gwno, 
+         incidencev414, #whether there was a conflict that year
+         newconflictinyearv414, #whether there was a new conflict initiated (used to create dependent var for my other paper)
+         onset2v414) %>% #whether a conflict happened after two years of no conflict (initiation or not)
+  rename(cowcode = gwno,
+         incidence = incidencev414,
+         new_conflict = newconflictinyearv414,
+         onset_2yr = onset2v414) %>%
+  group_by(cowcode) %>% 
+  arrange(cowcode,
+          year) %>% #checked that no years were missing using the custom function check_missing_sequence
+  mutate(incidence_lag1 = lag(incidence)) #creating a variable for prior year conflict
 
 #let's choose the countries that we are interested in
 ucdp_onset_2014 <- ucdp_onset_2014[ucdp_onset_2014$gwno %in% cow_code,]
@@ -509,7 +551,7 @@ ucdp_onset_2014 <- dplyr::select(ucdp_onset_2014, year, gwno, incidencev414, new
 #ucdp_onset_2014 <- slide(ucdp_onset_2014, Var = "newconflictinyearv414", GroupVar = "gwno", slideBy = -2)
 
 #create prior year conflict variable by lagging incidencev414
-ucdp_onset_2014 <- slide(ucdp_onset_2014, Var = "incidencev414", GroupVar = "gwno", slideBy = -1, reminder = F)
+ucdp_onset_2014 <- slide(ucdp_2014, Var = "incidencev414", GroupVar = "gwno", slideBy = -1, reminder = F)
 
 #creating our conflict initiation (defined by savun) data
 #ucdp_onset_2014$conflict_ini <- 0
@@ -523,7 +565,7 @@ ucdp_onset_2014 <- slide(ucdp_onset_2014, Var = "incidencev414", GroupVar = "gwn
 
 #need to make peace years data, this counts the years of peace since the last initiation (not conflict)
 #the btscs function creates a new df with the peace years in it as "spell"
-ucdp_onset_2014_pyears <- btscs(ucdp_onset_2014, "incidencev414", "year", "gwno")
+ucdp_onset_2014_pyears <- btscs(ucdp_onset_2014, "incidencev414", "year", "gwno") ## pickup HERE *****
 
 #I attached the spell column to our ucdp dataset
 ucdp_onset_2014$peaceyears <- ucdp_onset_2014_pyears$spell
