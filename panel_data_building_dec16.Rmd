@@ -14,7 +14,9 @@ pacman::p_load(tidyverse,
                readxl,
                plm,
                #RcppRoll,
-               bigrquery) 
+               bigrquery,
+               DAMisc,
+               splines) 
 
 
 lag <- dplyr::lag
@@ -516,95 +518,49 @@ ucdp_clean <- ucdp_2014 %>%
          onset2v414) %>% #whether a conflict happened after two years of no conflict (initiation or not)
   rename(cowcode = gwno,
          incidence = incidencev414,
-         new_conflict = newconflictinyearv414,
-         onset_2yr = onset2v414) %>%
+         conflict_onset = newconflictinyearv414,
+         incidence_2yr = onset2v414) %>%
+  btscs(., #creates the peace years (or peace spells) data where it counts the years of peace since the last initiation (not conflict)
+        event = "incidence",
+        tvar = "year",
+        csunit = "cowcode") %>%
   group_by(cowcode) %>% 
   arrange(cowcode,
           year) %>% #checked that no years were missing using the custom function check_missing_sequence
-  mutate(incidence_lag1 = lag(incidence)) #creating a variable for prior year conflict
-
-#let's choose the countries that we are interested in
-ucdp_onset_2014 <- ucdp_onset_2014[ucdp_onset_2014$gwno %in% cow_code,]
-#keep the years for now so that we can create peace years
-
-#check the number of countries
-length(unique(ucdp_onset_2014$gwno))
-#there are 176 countries 
-
-#out of 3689 obs, there are only 69 cases of onset and 158 cases of conflict (or new conflict) after more than 2 years of peace
-#so I will keep both variables just in case
-table(ucdp_onset_2014$newconflictinyearv414)
-table(ucdp_onset_2014$onset2v414)
-table(ucdp_onset_2014$incidencev414)
-
-#let's select the variables we need
-#incidencev412 is whether there is a conflict, 
-#onset2cv412 is whether a conflict happened after two years of no conflict (can be initiation or not)
-#newconflictinyearv412 is whether there was a new conflict initiated (what we are looking for to create dependent)
-ucdp_onset_2014 <- dplyr::select(ucdp_onset_2014, year, gwno, incidencev414, newconflictinyearv414, onset2v414)
-
-#conflict initiation data used is tricky (the name is misleading too)
-#it is a measure of conflict incidence that happen after at least two years since a initiation (as defined by UCDP)
-#incidence = 1 & conflict_ini (for previous year)= 0 & conflict_ini (for two years prior) = 0
-#I lag the conflict initiation data twice (one for 1 year lag, other for 2 year lag)
-#ucdp_onset_2014 <- slide(ucdp_onset_2014, Var = "newconflictinyearv414", GroupVar = "gwno", slideBy = -1)
-#ucdp_onset_2014 <- slide(ucdp_onset_2014, Var = "newconflictinyearv414", GroupVar = "gwno", slideBy = -2)
-
-#create prior year conflict variable by lagging incidencev414
-ucdp_onset_2014 <- slide(ucdp_2014, Var = "incidencev414", GroupVar = "gwno", slideBy = -1, reminder = F)
-
-#creating our conflict initiation (defined by savun) data
-#ucdp_onset_2014$conflict_ini <- 0
-#ucdp_onset_2014$conflict_ini[which(ucdp_onset_2014$newconflictinyearv414==1 & #ucdp_onset_2014$`newconflictinyearv414-1`==0 &
-#                                     ucdp_onset_2014$`newconflictinyearv414-2`==0)] <- 1
-
-#table(ucdp_onset_2014$conflict_ini)
-#remove the lagged vectors
-#ucdp_onset_2014$`newconflictinyearv414-1` <- NULL
-#ucdp_onset_2014$`newconflictinyearv414-2` <- NULL
-
-#need to make peace years data, this counts the years of peace since the last initiation (not conflict)
-#the btscs function creates a new df with the peace years in it as "spell"
-ucdp_onset_2014_pyears <- btscs(ucdp_onset_2014, "incidencev414", "year", "gwno") ## pickup HERE *****
-
-#I attached the spell column to our ucdp dataset
-ucdp_onset_2014$peaceyears <- ucdp_onset_2014_pyears$spell
-
-#now we can select our years of interest
-ucdp_onset_2014 <- ucdp_onset_2014[ucdp_onset_2014$year %in% years,]
+  mutate(incidence_lag1 = lag(incidence)) %>% #creating a variable for prior year conflict
+  bind_cols(data.frame(ns(.$spell, 
+                          df=4))) %>%
+  rename(peace_years = spell,
+         peace_years_spline1 = X1,
+         peace_years_spline2 = X2,
+         peace_years_spline3 = X3,
+         peace_years_spline4 = X4) 
+  
 
 
-#splines and time cubed
+
+#Explanation: splines and time cubed
 
 #using the peace years as a duration term, we create splines to account for the autocorrelation due to time effects
 #natural splines with b-spline basis with equally-spaced knots have been recommended by some
 #others say that we should adjust the knots by looking at fit- but to do this we have to construct the whole dataset, so this will come later
-#time cubed is another method suggested by carter
+#time cubed is another method suggested by Carter
 
-#natural splines, with three knots at quantiles (knots are df - 1, when df is provided)
-basis_spline <- (ns(ucdp_onset_2014$peaceyears, df=4))
+#natural splines, with three knots at quantiles (knots are df - 1, when df is provided). This was merged into the ucdp dataset
+basis_spline <- ns(ucdp_clean$peace_years, df=4)
 
 #as an aside, the below shows that ns() with degrees and no intercept does remove the constant as required by carter
 #only basis_spline3 has an extra spline basis. basis_spline and basis_spline2 are the same (knots for basis_spline2 are from basis_spline)
-basis_spline <- (ns(ucdp_onset_2014$peaceyears, df=4))
-basis_spline2 <- (ns(ucdp_onset_2014$peaceyears, knots = c(2,15,32.75)))
-basis_spline3 <- (ns(ucdp_onset_2014$peaceyears, knots = c(2,15,32.75), intercept = T))
+#basis_spline <- (ns(ucdp_clean$peace_years, df=4))
+#basis_spline2 <- (ns(ucdp_clean$peace_years, knots = c(2,15,32.75)))
+#basis_spline3 <- (ns(ucdp_clean$peace_years, knots = c(2,15,32.75), intercept = T))
 
-#merge the ucdp dataset with the spline basis matrix
-ucdp_onset_2014 <- cbind(ucdp_onset_2014,basis_spline)
-
-#rename the spline base vectors and other columns for readability
-ucdp_onset_2014 <- rename(ucdp_onset_2014, c("1"="pyspline_1", "2"="pyspline_2", "3"="pyspline_3", "4"="pyspline_4",
-                                             "gwno"= "cowcode", "incidencev414"= "v_incidence_nl", "incidencev414-1"="v_incidence", "newconflictinyearv414"= "conflict_onset_ucdp",
-                                             "onset2v414"="v_incidence2yr"))
-
-#change name for merge
-ucdp_final <- ucdp_onset_2014
-
-#looks good
 
 
 ```
+
+
+
 
 ```{r}
 #WDI dataset: Inflation and women in parliament (%)
