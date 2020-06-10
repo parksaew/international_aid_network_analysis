@@ -601,7 +601,7 @@ wdi_clean <- wdi %>%
          women_parliament = `Proportion of seats held by women in national parliaments (%)`,
          country = `Country Name`) %>%
   mutate(consumer_inflation = as.numeric(consumer_inflation),
-         women_parliament = as.numeric(consumer_inflation),
+         women_parliament = as.numeric(women_parliament),
          isocode = `Country Code`) %>%
   select(cowcode,
          country, 
@@ -611,7 +611,7 @@ wdi_clean <- wdi %>%
          women_parliament)
   
 
-#In the previous code, I created a separate dataset of the ratio of women in parliament just for donor countries since this was used as an instrumental variable. for the current version of the data cleaning script, I do this later on.
+#In the previous code, I created a separate dataset of the ratio of women in parliament just for donor countries since this was used as an instrumental variable. for the current version of the data cleaning script, I address this later on.
 
 #(previous code) before we just look at the recipients, I also make a separate dataset for the donors
 # wdi_donors <- wdi[wdi$`Country Code` %in% donors,] 
@@ -645,81 +645,44 @@ paxton_clean <- paxton_wip %>%
   pivot_longer(-c(UNID,
                   COUNTRYN),
                names_to = "year",
-               values_to = "women_parliament")
+               values_to = "women_parliament") %>%
+  mutate(year = as.numeric(year),
+         cowcode = countrycode(UNID, "un", "cown", warn = TRUE)) %>%
+  rename(country = COUNTRYN,
+         un_id = UNID)
   
 
+#In the previous code, I created a separate dataset of the ratio of women in parliament just for donor countries since this was used as an instrumental variable. for the current version of the data cleaning script, I address this later on.
+ 
+#(Previous code) before we just extract the recipients, we get the donor data for the IV's
+# donors_cowcode <- countrycode(donors, "iso3c", "cown", warn = TRUE)
+# paxton_donors <- paxton_wip[paxton_wip$paxton_cowcode %in% donors_cowcode, ]
+# paxton_donors <- rename(paxton_donors, c("paxton_cowcode"="cowcode"))
+# paxton_donors <-  dplyr::select(paxton_donors, cowcode, year, women_parliament)
 
 
-#pickup here ****
-#name year a numeric value
-paxton_wip$year <- as.numeric(paxton_wip$year)
-
-#dataset with the years we are interested in
-#since we will merge this with WDI data, we end at from 2002
-paxtonyears <- c(1989:2002)
-
-paxton_wip<- paxton_wip[paxton_wip$year %in% paxtonyears, ]
-
-
-#here countries are coded by UNID, while savun's original data uses COW
-#we need to translate between the two
-paxton_cowcode <- countrycode(paxton_wip$UNID, "un", "cown", warn = TRUE)
-paxton_wip <- cbind(paxton_cowcode, paxton_wip)
-#creating cow codes for paxton and binding the cow codes to the WDI dataframe
-
-#before we just extract the recipients, we get the donor data for the IV's
-donors_cowcode <- countrycode(donors, "iso3c", "cown", warn = TRUE)
-paxton_donors <- paxton_wip[paxton_wip$paxton_cowcode %in% donors_cowcode, ]
-paxton_donors <- rename(paxton_donors, c("paxton_cowcode"="cowcode"))
-paxton_donors <-  dplyr::select(paxton_donors, cowcode, year, women_parliament)
-
-#now we can choose just the countries we need
-paxton_wip <- paxton_wip[paxton_wip$paxton_cowcode %in% cow_code,] 
-#creating a new dataset with the years and countries we are interested in
-
-#let's see how many countries are included here
-length(unique(paxton_wip$paxton_cowcode))
-#there are 161, which means that  18 countries are missing in the WDI data
-
-#let's check which countries are missing
-missing_ccode_paxton <- setdiff(cow_code, unique(paxton_wip$paxton_cowcode))
-#this gives me the names of the countries that are missing from Polity
-
-#rename the cowcode column
-paxton_final <- rename(paxton_wip, c("paxton_cowcode"="cowcode"))
-
-
-#merge WDI and Paxton
-#I think it will be best if I just make two datasets, one for inflation and one for WIP
-
-wdi_wip <- dplyr::select(wdi_both, cowcode, year, women_parliament)
-
-#for wdi, we need to select only years from 2003-2016, and only the countries in both datasets
-wdiwipyears <- c(2003:2016)
-wdi_wip<- wdi_wip[wdi_wip$year %in% wdiwipyears, ]
-
-#paxton wip data
-paxton_final <-  dplyr::select(paxton_final, cowcode, year, women_parliament)
-
-#WDI inflation data
-inflation_final <- dplyr::select(wdi_both, cowcode, year, consumer_inflation)
-
-#now we can bind all the wip data
-combined_wip <- bind_rows(wdi_wip, paxton_final)
-
-#order by country and year
-combined_wip <- arrange(combined_wip, cowcode, year)
-
-#and also only select countries in both datasets (so that I can easily make donor wip column)
-wip_cowcode <- intersect(unique(wdi_wip$cowcode), unique(paxton_final$cowcode))
-combined_wip <- combined_wip[combined_wip$cowcode %in% wip_cowcode, ]
-
-#check the number of countries
-length(unique(combined_wip$cowcode))
-#there are 188 countries 
 
 #~~~~
-#lastly, donor wip can also be calculated through wip data
+
+# merge WDI and Paxton data
+
+wdi_paxton_merge <- wdi_clean %>%
+  filter(!is.na(cowcode)) %>%
+  full_join(select(paxton_clean,
+                   cowcode,
+                   year,
+                   women_parliament),
+            by = c("cowcode",
+                   "year"),
+            suffix = c("_wdi",
+                       "_paxton")) %>%
+  mutate(women_parliament = ifelse(year < 2004, 
+                                   women_parliament_paxton,
+                                   women_parliament_wdi))
+
+#For donor WiP, I don't think there is a reason to calculate averages separately as we can merge WiP for both the donor and recipient sides of the dyads. But I leave the code commented out for now (this was actually commented out before too)
+
+#(Previous code) lastly, donor wip can also be calculated through wip data
 #we need the logged average of annual sweden,us,and france 1989-2014 (then repeat the data)
 
 #wdi_donors$women_parliament <- as.numeric(wdi_donors$women_parliament)
@@ -735,10 +698,6 @@ length(unique(combined_wip$cowcode))
 #donor_wip_avg <- rep(donor_wip$donor_wip, 161)
 #repeating the vector 146 (while keeping the order)
 #combined_wip <- cbind(combined_wip, donor_wip_avg)
-#~~
-
-#change name for merge
-wip_final <- combined_wip
 
 
 ```
