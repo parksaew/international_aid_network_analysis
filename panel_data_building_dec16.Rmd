@@ -302,28 +302,6 @@ Start of ORGB 708 code
 
 
 
-# pacman::p_load(dplyr,
-#                foreign,
-#                tidyverse,
-#                stats,
-#                Zelig,
-#                zeligverse,
-#                haven,
-#                plyr,
-#                tidyr,
-#                boot,
-#                data.table,
-#                popbio,
-#                fmsb,
-#                splines,
-#                readxl,
-#                countrycode,
-#                DataCombine,
-#                DAMisc,
-#                mixAK)
-
-
-
 #To build a dataset of controls, We will merge several country-year datasets together. First, we create a skeleton of just the index variables and use it as the left table of the left joins that are implemented.
 controls_index <- codelist_panel %>% #country-year DF from the countrycode package
   select(country.name.en,
@@ -335,31 +313,6 @@ controls_index <- codelist_panel %>% #country-year DF from the countrycode packa
          un,
          region)
   
-
-
-#May27 - I think I just don't use this at all in the end
-#Savun_Tirone_2011_AJPS_Replication_Dataset <- read_dta("Savun-Tirone 2011 AJPS Replication Dataset.dta")
-#savun_data_base <- Savun_Tirone_2011_AJPS_Replication_Dataset
-
-#years I am interested in
-years <- c(1989:2016)
-
-#to remove empty vectors
-remove <- c("")
-
-#get a vector of the countries that are included
-#countries<- unique(Savun_Tirone_2011_AJPS_Replication_Dataset$recipient_country)
-#countries <- countries[!countries == ""]
-countries <- countries_chr
-
-
-#deleting NAs
-
-#cow_code <- unique(Savun_Tirone_2011_AJPS_Replication_Dataset$recipient_cowcode)cow_code <- countries_cow
-
-
-
-### I changed the number of countries in the different sections 
 
 ```
 
@@ -523,25 +476,26 @@ ucdp_clean <- ucdp_2014 %>%
          newconflictinyearv414, #whether there was a new conflict initiated (used to create dependent var for my other paper)
          onset2v414) %>% #whether a conflict happened after two years of no conflict (initiation or not)
   rename(cowcode = gwno,
-         incidence = incidencev414,
+         conflict = incidencev414,
          conflict_onset = newconflictinyearv414,
          incidence_2yr = onset2v414) %>%
   btscs(., #creates the peace years (or peace spells) data where it counts the years of peace since the last initiation (not conflict)
-        event = "incidence",
+        event = "conflict",
         tvar = "year",
         csunit = "cowcode") %>%
   group_by(cowcode) %>% 
   arrange(cowcode,
           year) %>% #checked that no years were missing using the custom function check_missing_sequence
-  mutate(incidence_lag1 = lag(incidence)) %>% #creating a variable for prior year conflict
   bind_cols(data.frame(ns(.$spell, 
                           df=4))) %>%
   rename(peace_years = spell,
          peace_years_spline1 = X1,
          peace_years_spline2 = X2,
          peace_years_spline3 = X3,
-         peace_years_spline4 = X4) 
-  
+         peace_years_spline4 = X4) %>%
+  mutate(conflict_prior_year = lag(conflict), #creating a variable for prior year conflict
+         peace_years_squared = peace_years^2, #adding t^2
+         peace_years_cubed = peace_years^3*0.001) #adding t^3. divided by 1000 to avoid numeric instability as recommended by Carter
 
 
 
@@ -686,14 +640,11 @@ wdi_paxton_merge <- wdi_clean %>%
 #we need the logged average of annual sweden,us,and france 1989-2014 (then repeat the data)
 
 #wdi_donors$women_parliament <- as.numeric(wdi_donors$women_parliament)
-
 #create a separate dataframe just for the donors
 #donor_wip <- bind_rows(paxton_donors, wdi_donors)
-
 #rearrange and calculate averages
 #donor_wip <- spread(donor_wip, cowcode, women_parliament)
 #donor_wip$donor_wip <- log(rowMeans(donor_wip[,-1]))
-
 #we use the resulting vector to attach it to the pwt dataset
 #donor_wip_avg <- rep(donor_wip$donor_wip, 161)
 #repeating the vector 146 (while keeping the order)
@@ -703,79 +654,47 @@ wdi_paxton_merge <- wdi_clean %>%
 ```
 
 
+Bind all the ORGB 708 controls together into one dataframe
 
-###### merge everything and export
+  - This is not necessary and all the DFs can be merged at the very end, but it does make things easier to manage
 
 ```{r}
-#merge all the data
 
-#extended_data <- merge(ucdp_final, democracy_aid_final, by=c("cowcode","year"), all=TRUE) 
+#merge all the controls from the original ORGB 708 research
 
-extended_data <- merge(ucdp_final, polity_2016_final, by=c("cowcode","year"), all=TRUE) 
-extended_data <- merge(extended_data, pennwt_9_final, by=c("cowcode","year"), all=TRUE) 
-#extended_data <- merge(extended_data, affinity_final, by=c("cowcode","year"), all=TRUE)
-extended_data <- merge(extended_data, inflation_final, by=c("cowcode","year"), all=TRUE)
-extended_data <- merge(extended_data, wip_final, by=c("cowcode","year"), all=TRUE)
+#first have a version that is not lagged (most independent variables need to be lagged in the final df for analysis)
+original_controls_unlagged <- controls_index %>%
+  select(country.name.en,
+         cown,
+         year,
+         region) %>%
+  filter(!is.na(cown)) %>%
+  rename(country = country.name.en, #all the country names will be from the country code project (may not be the best choice)
+         cowcode = cown) %>%
+  left_join(polity_clean %>%
+              select(-country), #removing country name columns since it will be redundant
+            by = c("cowcode" = "ccode",
+                   "year")) %>%
+  left_join(pennwt_clean %>%
+              select(-c(countrycode, #removing non-CoW country codes since it will be redundant
+                        country)),
+            by = c("cowcode",
+                   "year")) %>%
+  left_join(ucdp_clean,
+            by = c("cowcode",
+                   "year")) %>%
+  left_join(wdi_paxton_merge %>%
+              select(-c(country,
+                        isocode)),
+            by = c("cowcode",
+                   "year")) %>%
+  group_by(cowcode) %>%
+  arrange(cowcode,
+          year)
 
-
-#rename some variables
-extended_data <- rename(extended_data, c("donor_gdp_vector"="donor_gdp"))
-
-#also add regions 
-extended_data$region <- countrycode(extended_data$cowcode, "cown", "region", warn = TRUE)
-
-#add country name based on cowcode
-extended_data$country_name <- countrycode(extended_data$cowcode, "cown", "country.name", warn = TRUE)
-
-
-#moving country_name to the first column for better viewing
-extended_data <- extended_data[,c(ncol(extended_data),1:(ncol(extended_data)-1))]
-
-#remove some extra columns (country names)
-extra_columns <- c("scode", "country.x", "countrycode", "country.y", "cyear", "recipient_country")
-extended_data <- extended_data[ , !(names(extended_data) %in% extra_columns)]
-
-
-#lead year by one year to have the effect of lagging all other variables
-extended_data<- slide(extended_data, Var = "year", GroupVar = "cowcode", slideBy = 1)
-
-#lead conflict_ini by one year to have the effect of lagging all other variables
-#extended_data<- slide(extended_data, Var = "conflict_ini", GroupVar = "cowcode", slideBy = 1)
-
-#do the same to other measures of conflict initiations
-#extended_data<- slide(extended_data, Var = "v_incidence2yr", GroupVar = "cowcode", slideBy = 1)
-#extended_data<- slide(extended_data, Var = "conflict_onset_ucdp", GroupVar = "cowcode", slideBy = 1)
-
-#rearrange order of data
-#extended_data <- extended_data[,c(1:7, ncol(extended_data)-2,ncol(extended_data)-1, ncol(extended_data),8:(ncol(extended_data)-3))]
-
-#add dummy variable for after 2002
-#extended_data$dummy2002 <- 0
-#extended_data$dummy2002[which(extended_data$year >= 2002)] <- 1
-
-#forgot to add t,t^2,t^3, I divided the cubed term by 1000 to avoid numeric instability as recommended by carter
-extended_data$py_squared <- extended_data$peaceyears^2
-extended_data$py_cubed <- extended_data$peaceyears^3*0.001
-
-
-#I rename variables so that they are similar to the replication formula (new df just in case)
-extended_data1 <- rename(extended_data, c("peaceyears"="peace_years", 
-                                         "polity1_dem"="democratization1", "polity1_dem_ord" = "democratization1_ord",
-                                         "polity"="democracy", "rgdppc_growth"="growth_real_gdppc", "rgdp_pc"="real_gdppc",
-                                         "v_incidence" = "conflict_prioryear", "v_incidence_nl" ="conflict_prioryear_nl" ))
-
-#and adjust the years to 1990-2015
-
-years2 <- c(1990:2014)
-extended_data1 <- extended_data1[extended_data1$year %in% years2,]
-
-
-#looks good!
-
-
-#let's export this to stata for use
-write.dta(extended_data1, "C:/Users/Spark/Desktop/Winter_2018/ORGB_708/research/researchproj/extended_data_0401.dta")
-
+original_controls <- original_controls_unlagged %>%
+  mutate(year = lead(year))
+  
 
 ```
 
