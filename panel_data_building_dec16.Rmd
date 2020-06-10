@@ -97,6 +97,12 @@ Other datasets:
     
   - Uppsala Conflict Data Program - Confliect Onset (1946-2014)
     - Refer to codebook "https://ucdp.uu.se/downloads/onset/UCDP_Onset_Dataset_Codebook_19.1.pdf" (note: codebook is for an updated version of the dataset)
+    
+  - World Development Index (1960-2017) & Paxton's Women in Parliament (1893 - 2017)
+    - For inflation and gender ratio in governments seats
+    - WDI: Get metadata by going to "http://databank.worldbank.org/data/reports.aspx?source=world-development-indicators#" and looking up the information for the following series: Inflation, GDP deflator: linked series (annual %), Inflation, GDP deflator (annual %), Inflation, consumer prices (annual %), Proportion of seats held by women in national parliaments (%)
+    - Paxton: Refer to codebook "https://static1.squarespace.com/static/5b0c18c9aa49a1831d52aa12/t/5b6dfb47562fa78d36007b21/1533934408284/Paxton+Green+Hughes+2008_WIP_ICPSR_Codebook.pdf"
+    
 
 
 connect to bigquery
@@ -565,105 +571,86 @@ basis_spline <- ns(ucdp_clean$peace_years, df=4)
 ```{r}
 #WDI dataset: Inflation and women in parliament (%)
   #merged with Paxton's dataset for WIP for the earlier years (WDI data has spotty observation before the early 2000s)
+  #Paxton data for years upto 2002, and WDI data for years from 2003
 
 
-wdi_orginal <- read_csv("WDI_Data_1960-2017.csv")
-wdi <- wdi_orginal
-wdi[wdi==".."] <- NA #label NAs correctly
-wdi$`Series Code` <- NULL #series code is redundant
+wdi <- read_csv("./raw_data/WDI_Data_1960-2017.csv")
 
 
-#we need to remove the last 5 empty rows
-nwdi<-dim(wdi)[1] #get the number of rows
-wdi<-wdi[1:(nrow(wdi)-5),]
+wdi_clean <- wdi %>%
+  replace(. == "..", NA) %>% #label NAs correctly
+  select(-`Series Code`) %>% #series code is redundant since we have seried name
+  slice(1:(n()-5)) %>% #before turning the data into tidy format, we need to remove the last 5 empty rows
+  rename_at(vars(ends_with("]")), 
+            ~gsub( ".{8}$" ,
+                   replacement = "", 
+                   x = . )) %>% #changing year column names to just contain the years in numeric form
+  pivot_longer(-c(`Country Name`, #rearrange data to tidy format where observations are at the country-year level
+                  `Country Code`,
+                  `Series Name`),
+               names_to = "year", 
+               values_to = "value") %>%
+  pivot_wider(names_from = `Series Name`, #each series (which represent different metrics) are assigned a column
+              values_from = value) %>%
+  mutate(year = as.numeric(year),
+         cowcode = countrycode(`Country Code`, #convert ISO codes in the data to CoW
+                               "iso3c", 
+                               "cown", 
+                               warn = TRUE)) %>%
+  rename(consumer_inflation = `Inflation, consumer prices (annual %)`,
+         women_parliament = `Proportion of seats held by women in national parliaments (%)`,
+         country = `Country Name`) %>%
+  mutate(consumer_inflation = as.numeric(consumer_inflation),
+         women_parliament = as.numeric(consumer_inflation),
+         isocode = `Country Code`) %>%
+  select(cowcode,
+         country, 
+         isocode,
+         year, 
+         consumer_inflation, #in original code, I separated inflation and WiP, check if this needs to be done
+         women_parliament)
+  
+
+#In the previous code, I created a separate dataset of the ratio of women in parliament just for donor countries since this was used as an instrumental variable. for the current version of the data cleaning script, I do this later on.
+
+#(previous code) before we just look at the recipients, I also make a separate dataset for the donors
+# wdi_donors <- wdi[wdi$`Country Code` %in% donors,] 
+# wdi_donors <- wdi_donors[wdi_donors$year %in% c(2003:2016),]
+# wdi_donors <- rename(wdi_donors, c("wdi_cowcode"="cowcode",
+#                                    "Proportion of seats held by women in national parliaments (%)" = "women_parliament"))
+# wdi_donors <- dplyr::select(wdi_donors, cowcode, year, women_parliament)
 
 
-#changing year column names to just contain the years in numeric form
-names(wdi)[-(1:3)] = gsub( ".{8}$" , replacement = "", x = names(wdi)[-(1:3)])
 
-#rearranging data to tidy format
-wdi <- gather(wdi, year, value, 4:61)
-wdi <- spread(wdi, `Series Name`, value)
-
-#change year to numeric
-wdi$year <- as.numeric(wdi$year)
-
-#dataset with the years we are interested in
-wdi<- wdi[wdi$year %in% years, ]
-
-
-#here countries are coded by ISO, while savun's original data uses COW
-#we need to translate between the two
-wdi_cowcode <- countrycode(wdi$`Country Code`, "iso3c", "cown", warn = TRUE)
-wdi <- cbind(wdi_cowcode, wdi)
-
-#before we just look at the recipients, I also make a separate dataset for the donors
-wdi_donors <- wdi[wdi$`Country Code` %in% donors,] 
-wdi_donors <- wdi_donors[wdi_donors$year %in% c(2003:2016),]
-wdi_donors <- rename(wdi_donors, c("wdi_cowcode"="cowcode",
-                                   "Proportion of seats held by women in national parliaments (%)" = "women_parliament"))
-wdi_donors <- dplyr::select(wdi_donors, cowcode, year, women_parliament)
-#creating cow codes for WDI and binding the cow codes to the WDI dataframe
-#now we can choose just the countries we need
-wdi <- wdi[wdi$wdi_cowcode %in% cow_code,] 
-#creating a new dataset with the years and countries we are interested in
-
-#let's see how many countries are included here
-length(unique(wdi$`Country Code`))
-#there are 192
-
-#let's check which countries are missing
-missing_ccode_wdi <- setdiff(cow_code, unique(wdi$wdi_cowcode))
-#this gives me the names of the countries that are missing from Polity
-
-#rename columns for better merging and readability
-
-#now let's select just the variables we are interested in so that we can use it to build our dataset
-#I will use the consumer price inflation until I find a reason to use another measure of inflation
-
-#rename columns for better merging and readability
-wdi_final <- rename(wdi, c("wdi_cowcode"="cowcode", 
-                           "Inflation, consumer prices (annual %)" = "consumer_inflation",
-                           "Proportion of seats held by women in national parliaments (%)" = "women_parliament",
-                           "Country Name" = "country",
-                           "Country Code" = "countrycode"))
-
-#change women_parliament to numeric data
-wdi_final$women_parliament <- as.numeric(wdi_final$women_parliament)
-
-#this has both inflactio and WIP. I will separate the 2 later
-wdi_both <- dplyr::select(wdi_final, cowcode, countrycode, country, year, consumer_inflation, women_parliament)
-
-#looks good for the WDI part
 
 #~~~~~~
 
 
 #now to paxton data 1945-2003
-paxton_wipdata <- read_dta("C:/Users/Spark/Desktop/Winter_2018/poli_666/Research/analysis/paxton_wipdata.dta")
-paxton_wip <- paxton_wipdata
-
-#label NAs correctly (-88 and -99 are missing data)
-paxton_wip[paxton_wip=="-88"] <- NA
-paxton_wip[paxton_wip=="-99"] <- NA
-
-#we don't need the last dozen-ish columns after the years
-paxton_wip <- paxton_wip[,1:which(colnames(paxton_wip)=="P2003")]
-
-#we also don't need some columns in the beginning
-paxton_wip <- paxton_wip[ , !(colnames(paxton_wip) %in% c("CASEID", "REGIONFULL", "REGIONCONCISE"))]
+paxton_wip <- read_dta("./raw_data/paxton_wipdata.dta")
 
 
-##we need to make the years to a numeric value and rearrange to country-year format
-#first, fix the year values (remove the character "p" in all the column names)
-paxtonyrname <- (which(colnames(paxton_wip)=="P1945"): which(colnames(paxton_wip)=="P2003"))
 
-names(paxton_wip)[-(1:(min(paxtonyrname)-1))] <- gsub( "P", replacement = "",
-                                                            x = names(paxton_wip)[-(1:(min(paxtonyrname)-1))])
+paxton_clean <- paxton_wip %>%
+  replace(. == "-88" | . == "-99", NA) %>% #label NAs correctly (-88 and -99 are missing data)
+  mutate_at(vars(starts_with("P")),
+            ~as.numeric(.)) %>%
+  select_at(vars(contains("UNID"), #select just the country code, country name, and year columns
+                 contains("COUNTRYN"),
+                 starts_with("P"))) %>%
+  rename_at(vars(starts_with("P")), #before turning the data into country-year level tidy data, fix the year column names 
+            ~gsub( "P" ,
+                   replacement = "", 
+                   x = . )) %>%
+  pivot_longer(-c(UNID,
+                  COUNTRYN),
+               names_to = "year",
+               values_to = "women_parliament")
+  
 
-#then, rearrange the structure
-paxton_wip <- gather(paxton_wip, year, women_parliament, paxtonyrname)
 
+
+#pickup here ****
 #name year a numeric value
 paxton_wip$year <- as.numeric(paxton_wip$year)
 
