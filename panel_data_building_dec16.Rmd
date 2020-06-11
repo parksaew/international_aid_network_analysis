@@ -95,13 +95,16 @@ Other datasets:
   - Penn World Tables (V 9.0) (1950-2014)
     - Information about the data can be found here "https://www.rug.nl/ggdc/productivity/pwt/pwt-releases/pwt9.0"
     
-  - Uppsala Conflict Data Program - Confliect Onset (1946-2014)
+  - Uppsala Conflict Data Program - Conflict Onset (1946-2014)
     - Refer to codebook "https://ucdp.uu.se/downloads/onset/UCDP_Onset_Dataset_Codebook_19.1.pdf" (note: codebook is for an updated version of the dataset)
     
   - World Development Index (1960-2017) & Paxton's Women in Parliament (1893 - 2017)
     - For inflation and gender ratio in governments seats
     - WDI: Get metadata by going to "http://databank.worldbank.org/data/reports.aspx?source=world-development-indicators#" and looking up the information for the following series: Inflation, GDP deflator: linked series (annual %), Inflation, GDP deflator (annual %), Inflation, consumer prices (annual %), Proportion of seats held by women in national parliaments (%)
     - Paxton: Refer to codebook "https://static1.squarespace.com/static/5b0c18c9aa49a1831d52aa12/t/5b6dfb47562fa78d36007b21/1533934408284/Paxton+Green+Hughes+2008_WIP_ICPSR_Codebook.pdf"
+    
+  - World Bank - Unemployement (1959 -2017)
+    - Information about the data can be found through the "Details" button on https://data.worldbank.org/indicator/SL.UEM.TOTL.ZS 
     
 
 
@@ -290,7 +293,7 @@ crs_ip <- left_join(crs_panel_clean,
 
 
 
-### 3. Add data for controls 
+### 3. Add data for controls from previous project
 
 Because I did this analysis twice - first for ORGB 708 and then for my MA essay - there were multiple data cleaning files. For controls, the MA essay version had import work from the ORGB 708 paper. Instead just importing the cleaned data file, I inserted the code that created the controls DF below and cleaned it so that the entire data cleaning process would happen in one script.
 
@@ -654,7 +657,37 @@ wdi_paxton_merge <- wdi_clean %>%
 ```
 
 
-Bind all the ORGB 708 controls together into one dataframe
+Unemployment data was added after the ORGB project but it is still a country level control variable, so I include it here
+
+```{r}
+
+wb_unemployment <- read.csv(file="./raw_data/Unemployment_WB.csv", 
+                                   skip = 4,
+                                   header=TRUE, 
+                                   sep=",") 
+
+wb_unemployment_clean <- wb_unemployment %>%
+  select(-c(X, #empty column
+            Indicator.Code,#we only picked one indicator so this information is not useful
+            Indicator.Name)) %>%
+  rename_at(vars(starts_with("X")), #remove the "X" in front of all the column names for the years
+                 funs(substr(.,2, 5))) %>%
+  pivot_longer(-c(Country.Name, 
+                  Country.Code),
+               names_to = "year", 
+               values_to = "unemployment") %>%
+  group_by(Country.Code) %>%
+  mutate(year = as.integer(year),
+         cowcode = countrycode(Country.Code, "iso3c", "cown")) %>% 
+  ungroup()
+
+
+```
+
+
+
+
+Bind all the ORGB 708 controls + unemployment together into one dataframe
 
   - This is not necessary and all the DFs can be merged at the very end, but it does make things easier to manage
 
@@ -685,7 +718,14 @@ original_controls_unlagged <- controls_index %>%
                    "year")) %>%
   left_join(wdi_paxton_merge %>%
               select(-c(country,
-                        isocode)),
+                        isocode,
+                        women_parliament_wdi,
+                        women_parliament_paxton)),
+            by = c("cowcode",
+                   "year")) %>%
+  left_join(wb_unemployment_clean %>%
+              select(-c(Country.Name,
+                        Country.Code)),
             by = c("cowcode",
                    "year")) %>%
   group_by(cowcode) %>%
@@ -702,32 +742,26 @@ END of ORGB 708 code
 
 
 
+### 4. Merge country-level controls to dyadic data
 
 ```{r}
-##### Adding Controls
-  # these ones are already lagged one year
 
-controls <- read_dta("./raw_data/extended_data_0401.dta") %>%
-  mutate(year = as.integer(year),
-         cowcode = as.integer(cowcode))
-
-#already lagged one year
-#in country-year
+#many of the controls are stored in the original_controls DF
 
 
-
-###### Adding control variables to the dataset ######
+###### How to add country-level control variables to the dyadic dataset ######
 
 ###Recipient
-#controls$conflict_prioryear
+#controls$conflict_prior_year
 #controls$polity2_dem_ord #this is the change in democratization
-#controls$democracy #this is the democracy score
+#controls$polity #this is the democracy score
 #controls$pop #this is the population that has not been logged #I use it to scale the aid flow
 
 ###Both
-#controls$growth_real_gdppc
-#controls$real_gdppc
-#controls$population
+#controls$rgdpe_pc_growth
+#controls$rgdpe_per_capita
+#controls$pop_log_1000
+#unemployment
 
 ###Donor
 #controls$consumer_inflation
@@ -735,7 +769,7 @@ controls <- read_dta("./raw_data/extended_data_0401.dta") %>%
 
 #remember that pop and aidflows are both in millions
 
-mergedata2 <- left_join(mergedata1,
+mergedata2 <- left_join(mergedata1, #JUNE 10 NOTE: mergedata1 is crs_ips. DF and variable names have to be updated
                        select(controls,
                               cowcode,
                               year,
@@ -871,30 +905,6 @@ desta_both <- rbind(desta1 %>%
 
 
 
-### Unemployment Data 
-
-```{r}
-unemployment_worldbank <- read.csv(file="Unemployment_WB.csv", skip = 4, header=TRUE, sep=",") %>%
-  select(-X)
-
-
-#remove the "X" in front of all the column names for the years
-
-unemployment <- unemployment_worldbank %>%
-  select(-Indicator.Code,
-         -Indicator.Name) %>% #we only picked one indicator so this is all the same
-  rename_at(vars(starts_with("X")),
-                 funs(substr(.,2, 5))) %>%
-  gather(year, unemployment, -c(Country.Name, Country.Code)) %>%
-  group_by(Country.Code) %>%
-  mutate(year = as.integer(year),
-         ccode = countrycode(Country.Code, "iso3c", "cown"),
-         unemployment_1 = lag(unemployment, order_by = year)) %>% #lag 1 year
-  ungroup()
-
-
-#looks good
-```
 
 
 
