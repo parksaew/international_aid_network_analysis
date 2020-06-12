@@ -395,8 +395,10 @@ polity_clean <- polity_year_uncorrected %>%
   group_by(ccode) %>%
   mutate(polity1_dem_ord = polity - lag(polity, 2), #ordinal values for democratization as change compared to 2 years prior
          polity1_dem = as.numeric(polity1_dem_ord >= 3), #turning polity1_dem_ord as a dummy variable (same threshold as Savun's)
+         polity1_squared = (polity)^2, #squared since the impact of democracy may not be linear (extremes may not get aid)
          polity2_dem_ord = polity2 - lag(polity2, 2), #same for polity2
-         polity2_dem = as.numeric(polity2_dem_ord >= 3))
+         polity2_dem = as.numeric(polity2_dem_ord >= 3),
+         polity2_squared = (polity2)^2)
   
 
 ```
@@ -425,12 +427,14 @@ pennwt_clean <- pwt90 %>%
          rgdpe_per_capita = rgdpe/pop, #to get the gdp per capita, I just divide gdp by population (both are in millions)
          rgdpe_pc_growth = (exp(log(rgdpe_per_capita) - log(lag(rgdpe_per_capita))) - 1) * 100, #growth: get the differences of logs and exponentiate them. In the end, it is basically (a/b) - 1.
          #rgdpe_pc_growthB = ((rgdpe_per_capita - lag(rgdpe_per_capita))/ lag(rgdpe_per_capita)) * 100) #alt way to calculate % growth
+         rdgpe_per_capita_log = log(rgdpe_per_capita), #gdp per capita logged
          pop_log_1000 = log(pop * 1000)) %>% #population that is in 1000s and logged
   select(cowcode,
          country,
          year,
          rgdpe, #real GDP from expenditure side
          rgdpe_per_capita,
+         rdgpe_per_capita_log,
          rgdpe_pc_growth,
          pop,
          pop_log_1000) %>%
@@ -657,6 +661,7 @@ wdi_paxton_merge <- wdi_clean %>%
 ```
 
 
+
 Unemployment data was added after the ORGB project but it is still a country level control variable, so I include it here
 
 ```{r}
@@ -744,51 +749,60 @@ END of ORGB 708 code
 
 ### 4. Merge country-level controls to dyadic data
 
+How to add country-level control variables to the dyadic dataset
+
+  - Recipient:
+    - Prior Year Conflict
+    - Change in democracy level
+    - Democratization (boolean)
+    - Democracy level
+    - Democracy level, squared (since neither full democracies or full autocracy would attract democracy aid)
+    - Population (not logged, to be used to scale aid flow. "pop" and aidflow are both in millions)
+    
+  - Donor:
+    - Inflation
+    - % of Women in parliament
+    
+  - Both:
+    - Growth in GDP per capita
+    - GDP per capita
+    - Logged GDP per capita
+    - Population (logged)
+    - % Unemployment
+  
+
 ```{r}
+#all of the country level controls are stored in the original_controls DF
 
-#many of the controls are stored in the original_controls DF
+
+crs_ip_country_controls <- crs_ip %>%
+  left_join(original_controls %>% #merge the data for recipient countries
+              select(cowcode,
+                     year,
+                     conflict_prior_year,
+                     pop, #this is just used to correct the aid flow. This is in millions
+                     polity2_dem_ord,
+                     polity2_dem,
+                     polity2,
+                     polity2_squared,
+                     rgdpe_pc_growth,
+                     rgdpe_per_capita,
+                     rdgpe_per_capita_log,
+                     pop_log_1000) %>%
+              rename_at(vars(-c(cowcode,
+                                year)),
+                        ~paste0("r_",
+                                .)),
+            by = c("ccode2" = "cowcode", #ccode2 is for recipient countries
+                              "year")) 
 
 
-###### How to add country-level control variables to the dyadic dataset ######
+  left_join(original_controls %>% #merge the data for donor countries. PICKUP from here
+              select(cowcode,
+                     year))
+            
 
-###Recipient
-#controls$conflict_prior_year
-#controls$polity2_dem_ord #this is the change in democratization
-#controls$polity #this is the democracy score
-#controls$pop #this is the population that has not been logged #I use it to scale the aid flow
-
-###Both
-#controls$rgdpe_pc_growth
-#controls$rgdpe_per_capita
-#controls$pop_log_1000
-#unemployment
-
-###Donor
-#controls$consumer_inflation
-#controls$women_parliament
-
-#remember that pop and aidflows are both in millions
-
-mergedata2 <- left_join(mergedata1, #JUNE 10 NOTE: mergedata1 is crs_ips. DF and variable names have to be updated
-                       select(controls,
-                              cowcode,
-                              year,
-                              conflict_prioryear,
-                              pop, #this is just used to correct the aid flow - this is in millions
-                              polity2_dem_ord,
-                              polity2,
-                              growth_real_gdppc,
-                              real_gdppc,
-                              population), #"population"" is logged pop in thousands
-                       by = c("ccode2" = "cowcode", 
-                              "year"="year")) %>%
-  rename(r_democracy = polity2,
-         r_conflict_prioryear = conflict_prioryear,
-         r_pop_notlogged = pop,
-         r_politychange = polity2_dem_ord,
-         r_gdp_growth = growth_real_gdppc,
-         r_gdp = real_gdppc,
-         r_population = population) %>%
+    
   mutate(r_democratization = as.numeric(r_politychange > 2),
          r_gdplog = log(r_gdp),
          r_democracy_sq = (r_democracy)^2) %>%
