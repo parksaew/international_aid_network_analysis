@@ -794,62 +794,46 @@ crs_ip_country_controls <- crs_ip %>%
                         ~paste0("r_",
                                 .)),
             by = c("ccode2" = "cowcode", #ccode2 is for recipient countries
-                              "year")) 
-
-
+                              "year")) %>%
   left_join(original_controls %>% #merge the data for donor countries. PICKUP from here
               select(cowcode,
-                     year))
-            
+                     year,
+                     pop, #this is unlogged and in millions
+                     rgdpe_pc_growth,
+                     rgdpe_per_capita,
+                     rdgpe_per_capita_log,
+                     pop_log_1000,
+                     consumer_inflation,
+                     women_parliament) %>%
+              rename_at(vars(-c(cowcode,
+                                year)),
+                        ~paste0("d_",
+                                .)),
+            by = c("ccode1" = "cowcode", #ccode1 is for donor countries
+                              "year")) %>%
+  mutate_at(vars(contains("_aid")), #NA created for aid corrected because of missing population data (some due to lag) 
+            list(corrected = ~log(((./r_pop)*1000)+1))) %>%   
+  group_by(ccode2,
+           ccode1) %>%
+  arrange(ccode2,
+          ccode1,
+          year) %>%
+  mutate_at(vars(contains("_corrected")), #lags to measure the effect of previous aid amounts or FD (NEEDS VALIDATION)
+            list(`1` = ~lag(.),
+                 `3` = ~lag(., 
+                            n = 3),
+                 `5` = ~lag(.,
+                            n = 5))) %>%
+  mutate_at(vars(matches("^(d_|r_)")), #lags to measure the effect of previous year variables or FD (NEEDS VALIDATION)
+            list(`1` = ~lag(.))) #something to check - a couple examples that i checked makes it look like a lag might have been applied to recipients variables but not donor. this might be a coincidents ** NEEDS VERIFICATION
 
-    
-  mutate(r_democratization = as.numeric(r_politychange > 2),
-         r_gdplog = log(r_gdp),
-         r_democracy_sq = (r_democracy)^2) %>%
-  left_join(select(controls,
-                   cowcode,
-                   year,
-                   pop,
-                   growth_real_gdppc,
-                   real_gdppc,
-                   population,
-                   consumer_inflation,
-                   women_parliament),
-            by = c("ccode1" = "cowcode", 
-                   "year"="year")) %>%
-  rename(d_gdp_growth = growth_real_gdppc,
-         d_pop_notlogged = pop,
-         d_gdp = real_gdppc,
-         d_population = population,
-         d_consumer_inflation = consumer_inflation,
-         d_women_parliament = women_parliament) %>%
-  mutate(d_gdplog = log(d_gdp)) %>%
-  mutate_at(vars(contains("aid")), 
-            .funs = funs(corr = log(((./r_pop_notlogged)*1000)+1))) %>%
-  group_by(ccode2, ccode1) %>%
-  mutate_at(vars(ends_with("corr")),
-            .funs = funs(`1` = lag(., order_by = year))) %>%
-  mutate_at(vars(ends_with("corr")),
-            .funs = funs(`3` = lag(., order_by = year, n = 3))) %>%
-  mutate_at(vars(ends_with("corr")),
-            .funs = funs(`5` = lag(., order_by = year, n = 5))) %>%
-  mutate_at(vars(starts_with("r_")),
-            .funs = funs(`1` = lag(., order_by = year))) %>%
-  mutate_at(vars(starts_with("d_")),
-            .funs = funs(`1` = lag(., order_by = year)))
-
-#NA created for aid corrected for population because of missing population data   
   
-#sanity check - only very few are nans
-#sapply(mergedata, function(x) sum(is.nan(x)))
-#head(select(mergedata, democracy_aid_com_corr, democracy_aid_com_corr_l1)[100:106,])
-
-#for 666, lag democratization by 3 - should I still do this?
-
-write.csv(mergedata2, "mergedata_dec16.csv", row.names = F)
 
 ```
 
+
+
+### 5. Other dyadic level controls
 
 ```{r}
 ###CEPII data for distance (no year) 
