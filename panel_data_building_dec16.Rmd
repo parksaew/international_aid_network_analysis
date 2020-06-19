@@ -113,6 +113,7 @@ Other datasets:
     - Refer to codebook "https://www.designoftradeagreements.org/media/filer_public/b3/29/b329ac4e-146b-47bb-97ba-cab240474654/explanatory_notes19.pdf"
     
   - OECD - Immigration (1975 - 2015)
+    - Only includes movement into OECD countries 
     - Information (but no metadata) about the data can be found on "https://stats.oecd.org/Index.aspx?DataSetCode=MIG"
 
 
@@ -931,93 +932,117 @@ desta_clean <- rbind(desta_simple,
 
 Immigration Data 
 
-```{r}
+```{r immigration}
+
 immigration <- read.csv("./raw_data/Migration_1975-2015.csv", 
                              stringsAsFactors = F)
 
 
-
-
-immigration_clean <- immigration %>%
-  filter(VAR %in% c("B11", "B16")) %>% # B11 is migration and B16 is naturalization (see notes)
-
-immigration <- filter(immigration_oecd, 
-                      VAR %in% c("B11", "B16")) %>%
-  select(`ï..CO2`,
-         COU,
-         Year,
-         Value,
-         VAR) %>% 
-  spread(VAR, Value) %>%
-  rename(country1 = COU, #donor (inflow)
-         country2 = `ï..CO2`, #recipient (outflow)
+immigration_year_uncorrected <- immigration %>%
+  filter(VAR %in% c("B11", "B16")) %>% # B11 is migration and B16 is naturalization (see notes at bottom of chunk)
+  select(country1 = COU, #donor country (migration inflow)
+         country2 = `ï..CO2`, #recipient country (migration outflow)
          year = Year,
-         immigration = B11,
+         Value,
+         VAR) %>%
+  pivot_wider(names_from = VAR,
+              values_from = Value) %>%
+  rename(immigration = B11,
          naturalization = B16) %>%
-  mutate(ccode1 = countrycode(country1, "iso3c", "cown"),
-         ccode2 = countrycode(country2, "iso3c", "cown")) %>%
+  mutate(ccode1 = countrycode(country1, 
+                              "iso3c", 
+                              "cown"),
+         ccode2 = countrycode(country2, 
+                              "iso3c",
+                              "cown")) %>%
   filter(!is.na(ccode1) & !is.na(ccode2)) %>%
-  group_by(country1,
-           country2) %>%
-  mutate(immigration_1 = lag(immigration, order_by = year),
-         immigration_3 = lag(immigration, 3, order_by = year),
-         immigration_5 = lag(immigration, 5, order_by = year),
-         immigration_7 = lag(immigration, 7, order_by = year),
-         immigration_10 = lag(immigration, 10, order_by = year),
-         naturalization_1 = lag(naturalization, order_by = year),
-         naturalization_3 = lag(naturalization, 3, order_by = year),
-         log_immigration = log(immigration + 1),
-         log_immigration_1 = log(immigration_1 + 1),
-         log_immigration_3 = log(immigration_3 + 1),
-         log_immigration_5 = log(immigration_5 + 1),
-         log_immigration_7 = log(immigration_7 + 1),
-         log_immigration_10 = log(immigration_10 + 1),
-         log_naturalization = log(naturalization + 1),
-         log_naturalization_1 = log(naturalization_1 + 1),
-         log_naturalization_3 = log(naturalization_3 + 1)) %>%
-  ungroup()
+  select(-c(country1,
+            country2)) %>%
+  arrange(ccode1,
+          ccode2,
+          year)
+
+  #since we need to create lags for immigration data, I check for and fix the issue of missing years below
+
+
+#create a list of vectors of missing years for each ccode pair (if there are missing years)
+  #this shows that there were quite a few gaps (around 3600 observations), so there could have been a significant flaw in the research
+immigration_missing_year_list <- lapply(with(immigration_year_uncorrected %>%
+                                               mutate(ccode_both = paste0(ccode1, #creating a variable for pairs for split()
+                                                                          "_",
+                                                                          ccode2)),
+                                        split(year,
+                                              ccode_both)),
+                                   check_missing_sequence) %>%
+  compact() 
+
+
+#create an empty DF to fill in with missing ccode-year combinations in the following for-loop
+immigration_missing_indices <- data.frame(ccode1 = integer(),
+                                          ccode2 = integer(),
+                                          year = integer())
+
+#fill in the empty df immigration_missing_indices with missing ccode-year combinations using list_2_indices for each 
+for (i in seq(1:length(immigration_missing_year_list))) {
+  country_year_list <- immigration_missing_year_list[i]
+  new_country_df <- list_2_indices(country_year_list) %>%
+    rename(ccode_both = index1,
+           year = index2) %>%
+    mutate(ccode_both = as.character(ccode_both)) %>%
+    separate(ccode_both,
+             c("ccode1",
+               "ccode2"),
+             sep = "_") %>%
+    mutate(ccode1 = as.numeric(ccode1),
+           ccode2 = as.numeric(ccode2))
+  immigration_missing_indices <- bind_rows(immigration_missing_indices,
+                                           new_country_df)
+}
+
+
+
+immigration_clean <- immigration_year_uncorrected %>%
+  full_join(immigration_missing_indices,
+            by = c("ccode1",
+                   "ccode2",
+                   "year")) %>%
+  group_by(ccode1,
+           ccode2) %>%
+  arrange(ccode1,
+          ccode2,
+          year) %>%
+  mutate_at(vars(matches("^(immigration|naturalization)")), #lags naturalization and immigration to measure effect over time
+            list(`1` = ~lag(.),
+                 `3` = ~lag(., 
+                            n = 3))) %>%
+  mutate_at(vars(matches("^(immigration)$")), #lag immigration over even longer periods of time (see notes for explanation)
+            list(immigration_5 = ~lag(., # need to write out the entire name because only one column is matched (a bit inefficient)
+                                      n = 5),
+                 immigration_7 = ~lag(.,
+                                      n = 7),
+                 immigration_10 = ~lag(.,
+                             n = 10))) %>%
+  mutate_at(vars(matches("^(immigration|naturalization)")), #log all values
+            list(log = ~log(. + 1)))
+
 
 
 
 #Notes
-  #not scaled (count at single person level, not in millions, etc.)
+  #values are not scaled (count at single person level, not in millions, etc.)
   #all host countries are OECD members
+  #filter only:
+    #"inflow of foreign population by nationality" (to an OECD member), or VAR = B11
+      #foreign population means people with another nationality
+    #"Acquisition of nationality by country of former nationality", or VAR = B16
+      #this is naturalization data 
 
-  #filter only "inflow of foreign population by nationality" (to an OECD member), or VAR = B11
-    #foreign population means people with another nationality
-
-  #DEC 12 : also filter B16 (Acquisition of nationality by country of former nationality)
-    #this is naturalization data 
-
-
-
-#the country1 column includes TOT which means "total"- we should remove this
-
-
-#I lag this 1, 3, and 5 years because there is an argument in Menard that immigration can lead to unemployment 
-# which can lead to aid (I don't think this is directly related to lagging, but it will be good to check in case)
+  #I lag immigration 1, 3, and 5 years because there is an argument in Menard that immigration can lead to unemployment 
+    #which can lead to aid (I don't think this is directly related to lagging, but it will be good to check in case)
+  #I also did a 7 year lag (used by Jones-Correa) and a 10 year lag to proxy for immigrants who have stayed for a while and are more likely to have been naturalized. 
 
 
-#Dec 12 - I also did a 7 year lag (used by Jones-Correa) and a 10 year lag to proxy for immigrants who have stayed for a while and are more likely to have been naturalized. 
 
-
-#Dec 29 - need to check that all years are present and the lags actually work- it does, the lags are ok
- # - should use log_naturalization_lag
-
-
-#summary(immigration$immigration)
-#looks good
-
-
-# corrplot(cor(select(immigration,
-#                     immigration,
-#                     naturalization), use = "complete.obs"),
-#          method = "number")
-
-#here the correlation between immigration and naturalization is not too correlated
-
-#sanity check
-#head(immigration, n = 10)
 
 ```
 
