@@ -103,8 +103,14 @@ Other datasets:
     - WDI: Get metadata by going to "http://databank.worldbank.org/data/reports.aspx?source=world-development-indicators#" and looking up the information for the following series: Inflation, GDP deflator: linked series (annual %), Inflation, GDP deflator (annual %), Inflation, consumer prices (annual %), Proportion of seats held by women in national parliaments (%)
     - Paxton: Refer to codebook "https://static1.squarespace.com/static/5b0c18c9aa49a1831d52aa12/t/5b6dfb47562fa78d36007b21/1533934408284/Paxton+Green+Hughes+2008_WIP_ICPSR_Codebook.pdf"
     
-  - World Bank - Unemployement (1959 -2017)
+  - World Bank - Unemployment (1959 - 2017)
     - Information about the data can be found through the "Details" button on https://data.worldbank.org/indicator/SL.UEM.TOTL.ZS 
+    
+  - CEPII - Geo Distance dyadic data on distance between countries (225 countries)
+    - Refer to codebook "http://www.cepii.fr/PDF_PUB/wp/2011/wp2011-25.pdf" 
+    
+  - DESTA - International treaties (1948 - 2017)
+    - Refer to codebook "https://www.designoftradeagreements.org/media/filer_public/b3/29/b329ac4e-146b-47bb-97ba-cab240474654/explanatory_notes19.pdf"
     
 
 
@@ -825,7 +831,7 @@ crs_ip_country_controls <- crs_ip %>%
                  `5` = ~lag(.,
                             n = 5))) %>%
   mutate_at(vars(matches("^(d_|r_)")), #lags to measure the effect of previous year variables or FD (NEEDS VALIDATION)
-            list(`1` = ~lag(.))) #something to check - a couple examples that i checked makes it look like a lag might have been applied to recipients variables but not donor. this might be a coincidents ** NEEDS VERIFICATION
+            list(`1` = ~lag(.))) #something to check - a couple examples that I checked makes it look like a lag might have been applied to recipients variables but not donor. this might be a coincidents ** NEEDS VERIFICATION
 
   
 
@@ -835,9 +841,12 @@ crs_ip_country_controls <- crs_ip %>%
 
 ### 5. Other dyadic level controls
 
-```{r}
-###CEPII data for distance (no year) 
-cepii <- read_dta("dist_cepii.dta") %>%
+```{r CEPII}
+###CEPII data for distance between countries (no year) 
+
+cepii <- read_dta("./raw_data/dist_cepii.dta") 
+
+cepii_clean <- cepii %>%
   mutate(ccode1 = countrycode(iso_o, "iso3c", "cown"),
          ccode2 = countrycode(iso_d, "iso3c", "cown"),
          distlog = log(dist),
@@ -846,12 +855,13 @@ cepii <- read_dta("dist_cepii.dta") %>%
          samereg = as.numeric(d_region == r_region)) 
 
 
-#only the small countries (islands) are missing
-#dist is the simple distance between the biggest cities
-#colony is whether the pair of countries were ever in a colonial relationship
-#distw and distwces are basically the same, but distwces is the inverse to distw
-  #both are weighted distance
-  #distwces shrinks as distance grows and distw is the opposite
+#Notes:
+  #only the small countries (islands) are missing
+  #dist is the simple distance between the biggest cities
+  #colony is whether the pair of countries were ever in a colonial relationship
+  #distw and distwces are basically the same, but distwces is the inverse to distw
+    #both are weighted distance
+    #distwces shrinks as distance grows and distw is the opposite
 
 
 
@@ -860,43 +870,56 @@ cepii <- read_dta("dist_cepii.dta") %>%
 
 ### DESTA data- PTA 
 
-```{r}
-#create column for number of treaties to be filled with 0s too after merge (?- april 19)
-#for some reason I only looked at PTAs prior to 2005 - idk why I did that, so I removed this restriction
+```{r DESTA}
+#create column for number of treaties (preferential trade agreement- PTA) to be filled with 0s too after merge (?- april 19)
 
-DESTA <- read.csv(file="DESTA_treaties_dyadic.csv", stringsAsFactors = F)
+#database of treaties between countries
+desta <- read.csv(file="./raw_data/DESTA_treaties_dyadic.csv", 
+                  stringsAsFactors = F)
 
-desta1 <- select(DESTA, 
-                 iso1, 
-                 iso2, 
-                 base_treaty,
-                 year) %>%
-  mutate(ccode1 = countrycode(iso1, "iso3n", "cown"),
-         ccode2 = countrycode(iso2, "iso3n", "cown")) %>%
-  filter(!(is.na(ccode1)) & !is.na(ccode2)) %>%
-  distinct() %>%
-  group_by(ccode1, ccode2, year) %>%
-  summarise(ptacount = n()) 
+#in desta, each agreement is only counted once (if there is US-CAN, then there is no CAN-US for a particular agreement)
+  #however, we need to have the number be consistent within regardless of direction/order of pairs because treaties are non-directional
+  #so we duplicate the dataset so that if there are 3 treaties between A and B, the A-B dyad as well as the B-A dyad will show "3"
 
 
-desta_both <- rbind(desta1 %>%
-                      ungroup(),
-                    desta1 %>%
+#To achieve the above, we first create a dataframe with the relevant columns and country code converted that we will duplicate
+desta_simple <- desta %>%
+  select(iso1,
+         iso2,
+         base_treaty,
+         year) %>%
+  mutate(ccode1 = countrycode(iso1, 
+                              "iso3n",
+                              "cown"),
+         ccode2 = countrycode(iso2,
+                              "iso3n",
+                              "cown")) %>%
+  filter(!(is.na(ccode1)) & !is.na(ccode2)) 
+
+#Then we bind a duplication of the desta_simple with ccode1 and ccode2 and country the treaties grouped by ccode1 and ccode so that we will have the same count of treaties for a ccode1-ccode2 dyad and a ccode2-ccode1 dyard 
+desta_clean <- rbind(desta_simple,
+                     desta_simple %>% #2nd dataframe with ccode order switched
                       rename(c1 = ccode1,
                              c2 = ccode2) %>%
-                      mutate(ccode1 = c2,
-                             ccode2 = c1) %>%
-                      ungroup() %>%
-                      select(-c1, -c2)) %>%
-  group_by(ccode1, ccode2, year) %>%
-  summarise(ptacount = n()) %>%
-  ungroup()
+                      rename(ccode1 = c2, #switching the ccode orders (could be written more efficiently?)
+                             ccode2 = c1)) %>%
+  group_by(ccode1,
+           ccode2,
+           year) %>%
+  summarise(pta_count = n()) %>%
+  ungroup() %>%
+  group_by(ccode1, 
+           ccode2) %>%
+  complete(year = 1948:2017) %>% #creates rows for "missing" years - we assume that there were no PTAs in the missing years
+  replace(is.na(.), 0) %>% #filling in the missing values for the rows we just created with "0"
+  arrange(ccode1,
+          ccode2,
+          year) %>%
+  mutate(pta_cum_sum = cumsum(pta_count), # Cumulative count of treaties - will need for autocorrelation
+         pta_cum_sum_1 = lag(pta_cum_sum),
+         pta_count_1 = lag(pta_count))  
 
   
-
-#ptacount equals 1 for both direction of the order of ccode1/2
-  #in desta, each agreement is only counted once (if there is US-CAN, then there is no CAN-US for a particular agreement)
-
 #because there are missing years, the cumulative value and lagged values need to be calculated after merge
 ```
 
@@ -1078,10 +1101,10 @@ mergedata3 <- left_join(mergedata2,
                    "year")) %>%
   group_by(ccode1, ccode2) %>%
   arrange(ccode1, ccode2, year) %>%
-  mutate(ptacount = ifelse(is.na(ptacount), 0, ptacount), #added up duplicates already
-         ptasum = cumsum(ptacount), # Cumulative count of treaties - will need to autocorrelation
-         ptasum_1 = lag(ptasum, order_by = year),
-         ptacount_1 = lag(ptacount, order_by = year)) %>%
+  #mutate(ptacount = ifelse(is.na(ptacount), 0, ptacount), #added up duplicates already ## ALREADY DONE IN DESTA SECTION
+  #       ptasum = cumsum(ptacount), # Cumulative count of treaties - will need to autocorrelation
+  #       ptasum_1 = lag(ptasum, order_by = year),
+  #       ptacount_1 = lag(ptacount, order_by = year)) %>%
   left_join(select(unemployment, #unemployment columns for recipient
                    ccode,
                    year,
