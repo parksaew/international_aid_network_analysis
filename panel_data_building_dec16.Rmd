@@ -112,6 +112,8 @@ Other datasets:
   - DESTA - International treaties (1948 - 2017)
     - Refer to codebook "https://www.designoftradeagreements.org/media/filer_public/b3/29/b329ac4e-146b-47bb-97ba-cab240474654/explanatory_notes19.pdf"
     
+  - OECD - Immigration (1975 - 2015)
+    - Information (but no metadata) about the data can be found on "https://stats.oecd.org/Index.aspx?DataSetCode=MIG"
 
 
 connect to bigquery
@@ -841,6 +843,7 @@ crs_ip_country_controls <- crs_ip %>%
 
 ### 5. Other dyadic level controls
 
+
 ```{r CEPII}
 ###CEPII data for distance between countries (no year) 
 
@@ -868,7 +871,7 @@ cepii_clean <- cepii %>%
 ```
 
 
-### DESTA data- PTA 
+DESTA data- PTA 
 
 ```{r DESTA}
 #create column for number of treaties (preferential trade agreement- PTA) to be filled with 0s too after merge (?- april 19)
@@ -926,22 +929,17 @@ desta_clean <- rbind(desta_simple,
 
 
 
-
-
-
-### Immigration Data 
+Immigration Data 
 
 ```{r}
-immigration_oecd <- read.csv("Migration_1975-2015.csv", stringsAsFactors = F)
+immigration <- read.csv("./raw_data/Migration_1975-2015.csv", 
+                             stringsAsFactors = F)
 
-#not scaled (count at single person level, not in millions, etc.)
-#all host countries are OECD members
 
-#filter only "inflow of foreign population by nationality" (to an OECD member), or VAR = B11
-  #foreign population means people with another nationality
 
-#DEC 12 : also filter B16 (Acquisition of nationality by country of former nationality)
-  #this is naturalization data 
+
+immigration_clean <- immigration %>%
+  filter(VAR %in% c("B11", "B16")) %>% # B11 is migration and B16 is naturalization (see notes)
 
 immigration <- filter(immigration_oecd, 
                       VAR %in% c("B11", "B16")) %>%
@@ -978,6 +976,19 @@ immigration <- filter(immigration_oecd,
          log_naturalization_1 = log(naturalization_1 + 1),
          log_naturalization_3 = log(naturalization_3 + 1)) %>%
   ungroup()
+
+
+
+#Notes
+  #not scaled (count at single person level, not in millions, etc.)
+  #all host countries are OECD members
+
+  #filter only "inflow of foreign population by nationality" (to an OECD member), or VAR = B11
+    #foreign population means people with another nationality
+
+  #DEC 12 : also filter B16 (Acquisition of nationality by country of former nationality)
+    #this is naturalization data 
+
 
 
 #the country1 column includes TOT which means "total"- we should remove this
