@@ -13,7 +13,7 @@ pacman::p_load(tidyverse,
                haven,
                readxl,
                plm,
-               #RcppRoll,
+               zoo,
                bigrquery,
                DAMisc,
                splines) 
@@ -115,6 +115,10 @@ Other datasets:
   - OECD - Immigration (1975 - 2015)
     - Only includes movement into OECD countries 
     - Information (but no metadata) about the data can be found on "https://stats.oecd.org/Index.aspx?DataSetCode=MIG"
+    
+  - IMF - Trade (1980 - 2015)
+    - Information about the data can be found on "http://data.imf.org/?sk=9D6028D4-F14A-464C-A2F2-59B2CD424B85"
+      - The link to data has changed: go to the "Query" section to retrieve data
 
 
 connect to bigquery
@@ -1014,7 +1018,11 @@ immigration_clean <- immigration_year_uncorrected %>%
   mutate_at(vars(matches("^(immigration|naturalization)")), #lags naturalization and immigration to measure effect over time
             list(`1` = ~lag(.),
                  `3` = ~lag(., 
-                            n = 3))) %>%
+                            n = 3),
+                 roll_sum = ~rollsum(., #adding 5-year rolling sums 
+                                     k = 5,
+                                     fill = NA,
+                                     align = "right"))) %>% #"right" looks at the preceding years only
   mutate_at(vars(matches("^(immigration)$")), #lag immigration over even longer periods of time (see notes for explanation)
             list(immigration_5 = ~lag(., # need to write out the entire name because only one column is matched (a bit inefficient)
                                       n = 5),
@@ -1023,9 +1031,14 @@ immigration_clean <- immigration_year_uncorrected %>%
                  immigration_10 = ~lag(.,
                              n = 10))) %>%
   mutate_at(vars(matches("^(immigration|naturalization)")), #log all values
-            list(log = ~log(. + 1)))
-
-
+            list(log = ~log(. + 1))) %>%
+  mutate_at(vars(matches("ion_log$")),
+            list(roll_sum = ~rollsum(., #adding 5-year rolling sums (not sure why I put a lag just for the log**)
+                                     k = 5,
+                                     fill = NA,
+                                     align = "right"))) %>%
+  mutate(naturalization_log_roll_sum_1 = lag(naturalization_log_roll_sum))
+  
 
 
 #Notes
@@ -1050,27 +1063,77 @@ immigration_clean <- immigration_year_uncorrected %>%
 
 ### Trade Data from IMF
 
-```{r}
+```{r trade}
 #I use exports like DESTA did
   #use export from oecd to recipient, and then recipient to oecd
 #export in dollars
 
-trade_imf <- read.csv(file="DOT_04-19-2018 19-48-46-85_panel.csv",
+trade <- read.csv(file="./raw_data/DOT_04-19-2018 19-48-46-85_panel.csv",
                       stringsAsFactors = F)
 
-#select just the columns I need
-trade <- select(trade_imf,
-                Country.Code, 
-                Counterpart.Country.Code, 
-                Time.Period,
-                Goods..Value.of.Exports..Free.on.board..FOB...US.Dollars..TXG_FOB_USD.) %>%
-  rename(countryfrom = Country.Code,
-         countryto = Counterpart.Country.Code,
+
+trade_year_uncorrected <- trade %>%
+  select(exporting_ccode_imf = Country.Code,
+         importing_ccode_imf = Counterpart.Country.Code,
          year = Time.Period,
-         export = Goods..Value.of.Exports..Free.on.board..FOB...US.Dollars..TXG_FOB_USD.) %>%
-  mutate(ccodefrom = countrycode(countryfrom, "imf", "cown"),
-         ccodeto = countrycode(countryto, "imf", "cown")) %>% #change from IMF code
-  filter(!is.na(ccodeto) & !is.na(ccodefrom))
+         export = Goods..Value.of.Exports..Free.on.board..FOB...US.Dollars..TXG_FOB_USD.) %>% #Q: do we need to correct for inflation?
+  mutate(exporting_ccode = countrycode(exporting_ccode_imf, #change to CoW code from IMF code
+                                       "imf",
+                                       "cown"),
+         importing_ccode = countrycode(importing_ccode_imf,
+                                       "imf",
+                                       "cown")) %>% 
+  filter(!is.na(exporting_ccode) & !is.na(importing_ccode)) 
+
+  #since we need to create lags for trade data, I check for and fix the issue of missing years below
+
+trade_missing_year_list <- lapply(with(trade_clean %>%
+                                      mutate(ccode_both = paste0(exporting_ccode, #creating a variable for pairs for split()
+                                                                 "_",
+                                                                 importing_ccode)),
+                                    split(year,
+                                          ccode_both)),
+                               check_missing_sequence) %>%
+  compact() 
+
+#create an empty DF to fill in with missing ccode-year combinations in the following for-loop
+trade_missing_indices <- data.frame(exporting_ccode = integer(),
+                                    importing_ccode = integer(),
+                                    year = integer())
+
+#fill in the empty df immigration_missing_indices with missing ccode-year combinations using list_2_indices for each 
+for (i in seq(1:length(trade_missing_year_list))) {
+  country_year_list <- trade_missing_year_list[i]
+  new_country_df <- list_2_indices(country_year_list) %>%
+    rename(ccode_both = index1,
+           year = index2) %>%
+    mutate(ccode_both = as.character(ccode_both)) %>%
+    separate(ccode_both,
+             c("exporting_ccode",
+               "importing_ccode"),
+             sep = "_") %>%
+    mutate(exporting_ccode = as.numeric(exporting_ccode),
+           importing_ccode = as.numeric(importing_ccode))
+  trade_missing_indices <- bind_rows(trade_missing_indices,
+                                     new_country_df)
+}
+
+
+trade_clean <- trade_year_uncorrected %>%
+  full_join(trade_missing_indices,
+            by = c("exporting_ccode",
+                   "importing_ccode",
+                   "year")) %>%
+  mutate(export_log = log(export + 1)) %>%
+  group_by(exporting_ccode,
+           importing_ccode) %>%
+  arrange(exporting_ccode,
+          importing_ccode,
+          year) %>%
+  mutate_at(vars(matches("^export$|export_")),
+            list(`1` = lag))
+
+
 
 
 
@@ -1166,13 +1229,13 @@ mergedata3 <- left_join(mergedata2,
                    -country2),
             by = c("ccode1",
                    "ccode2",
-                   "year")) %>% #adding a 5-year rolling sum of naturalization
-  mutate(naturalization_roll = roll_sum(naturalization, 5, fill = NA, align = "right"),
-         log_naturalization_roll = log(roll_sum(naturalization, 5, fill = NA, align = "right")+1),
-         log_naturalization_roll_1 = lag(log_naturalization_roll, order_by = year),
-         immigration_roll = roll_sum(immigration, 5, fill = NA, align = "right"),
-         log_immigration_roll = log(roll_sum(immigration, 5, fill = NA, align = "right")+1),
-         log_immigration_roll_1 = lag(log_immigration_roll, order_by = year)) %>%
+                   "year")) %>% #adding a 5-year rolling sum of naturalization #*** June 2020 use rollsum from zoo or another known pack
+  # mutate(naturalization_roll = roll_sum(naturalization, 5, fill = NA, align = "right"), #right means x[i-2] + x[i-1] + x[i] (if n = 3) so that it doesn't look to the future
+  #        log_naturalization_roll = log(roll_sum(naturalization, 5, fill = NA, align = "right")+1),
+  #        log_naturalization_roll_1 = lag(log_naturalization_roll, order_by = year),
+  #        immigration_roll = roll_sum(immigration, 5, fill = NA, align = "right"),
+  #        log_immigration_roll = log(roll_sum(immigration, 5, fill = NA, align = "right")+1),
+  #        log_immigration_roll_1 = lag(log_immigration_roll, order_by = year)) %>% #*** already done in immigration section *****
   left_join(select(trade, #need to merge separately to get d to r and r to d exports
                    ccodeto,
                    ccodefrom,
@@ -1191,12 +1254,12 @@ mergedata3 <- left_join(mergedata2,
                    "ccode1" = "ccodeto",
                    "year")) %>%
   rename(rtod_export = export) %>%
-  mutate(log_rtod_export = log(rtod_export+1),
-         log_dtor_export = log(dtor_export+1),
-         rtod_export_1 = lag(rtod_export, order_by = year),
-         dtor_export_1 = lag(dtor_export, order_by = year),
-         log_rtod_export_1 = lag(log_rtod_export, order_by = year),
-         log_dtor_export_1 = lag(log_dtor_export, order_by = year)) %>%
+  # mutate(log_rtod_export = log(rtod_export+1), # already done in IMF trade section (June 2020) but need to add rtod or dtor
+  #        log_dtor_export = log(dtor_export+1),
+  #        rtod_export_1 = lag(rtod_export, order_by = year),
+  #        dtor_export_1 = lag(dtor_export, order_by = year),
+  #        log_rtod_export_1 = lag(log_rtod_export, order_by = year),
+  #        log_dtor_export_1 = lag(log_dtor_export, order_by = year)) %>%
   left_join(us_military_aid,
             by = c("ccode2",
                    "year")) %>%
