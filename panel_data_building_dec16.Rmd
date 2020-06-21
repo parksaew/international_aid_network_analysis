@@ -26,7 +26,7 @@ lead <- dplyr::lead
 
 
 
-```{r}
+```{r bigquery, echo=FALSE}
 
 #bigrquery only supports uploading tables up to 1 GB. crspanel is 2.5 GB so I will export it as a csv and upload it using the UI
   #bigQueryR is another package that connects R to BigQuery, and seems to allow bigger uploads. Could be something to consider in the future
@@ -863,10 +863,10 @@ cepii <- read_dta("./raw_data/dist_cepii.dta")
 cepii_clean <- cepii %>%
   mutate(ccode1 = countrycode(iso_o, "iso3c", "cown"),
          ccode2 = countrycode(iso_d, "iso3c", "cown"),
-         distlog = log(dist),
+         dist_log = log(dist + 1),
          d_region = countrycode(ccode1, "cown", "region"),
          r_region = countrycode(ccode2, "cown", "region"),
-         samereg = as.numeric(d_region == r_region)) 
+         same_region = as.numeric(d_region == r_region))
 
 
 #Notes:
@@ -1144,8 +1144,7 @@ trade_clean <- trade_year_uncorrected %>%
   mutate_at(vars(contains("export_")),
             list(`1` = ~lag(.)))
 
-
-
+#checked that there are no repeating combinations of the two ccodes and year
 
 
 ```
@@ -1198,9 +1197,28 @@ us_military_aid_clean <- us_aid %>%
 
 
 
-Merging part 3- final
+### 6. Merging all data together
 
-```{r}
+```{r merge}
+
+
+merged_dyadic <- crs_ip_country_controls %>%
+  left_join(select(cepii_clean,
+                   ccode1,
+                   ccode2,
+                   contig, #contiguity (sharing a border), boolean
+                   comlang_off, #shared official language, boolean
+                   comlang_ethno, #shared language (at least 9% of population for both), boolean
+                   colony, #past colonial relationship, boolean
+                   dist, #distance between most populated cities, km
+                   distw, #distance weighted by the share of the city in the overall country's population (for both)
+                   distwces, #inverse of distw (decreases as distance increases)
+                   dist_log, #log of dist
+                   d_region,
+                   r_region,
+                   same_region),
+            by = c("ccode1",
+                   "ccode2"))
 
 
 mergedata3 <- left_join(mergedata2,
