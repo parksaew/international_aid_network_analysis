@@ -94,6 +94,7 @@ Other datasets:
     
   - Penn World Tables (V 9.0) (1950-2014)
     - Information about the data can be found here "https://www.rug.nl/ggdc/productivity/pwt/pwt-releases/pwt9.0"
+      - More information about each economic variable can be found here "https://www.rug.nl/ggdc/productivity/pwt/related-research-papers/the_next_generation_of_the_penn_world_table.pdf"
     
   - Uppsala Conflict Data Program - Conflict Onset (1946-2014)
     - Refer to codebook "https://ucdp.uu.se/downloads/onset/UCDP_Onset_Dataset_Codebook_19.1.pdf" (note: codebook is for an updated version of the dataset)
@@ -119,6 +120,10 @@ Other datasets:
   - IMF - Trade (1980 - 2015)
     - Information about the data can be found on "http://data.imf.org/?sk=9D6028D4-F14A-464C-A2F2-59B2CD424B85"
       - The link to data has changed: go to the "Query" section to retrieve data
+      
+  - USAID - Greenbook (Overseas loans and grants) (1946 - 2016)
+    - This data was used to get measures of US military aid
+    - Information about the data can be found on "https://explorer.usaid.gov/reports#tab-u.s.-overseas-loans-and-grants-(greenbook)"
 
 
 connect to bigquery
@@ -418,12 +423,13 @@ polity_clean <- polity_year_uncorrected %>%
 
 
 
-```{r}
+```{r penn}
 
 
 #Penn World Tables (version 9.0): 
   # years: 1950 - 2014, 182 countries
 #Relevant variables: GDP (real gdp from expensidure side), GDP growth, population, donor GDP (as defined by Savun's paper)
+  #GDP is in constant 2005 USD (https://www.rug.nl/ggdc/productivity/pwt/related-research-papers/the_next_generation_of_the_penn_world_table.pdf)
 
 pwt90 <- read_excel("./raw_data/pwt90.xlsx", 
                     sheet = "Data")
@@ -1061,12 +1067,12 @@ immigration_clean <- immigration_year_uncorrected %>%
 
 
 
-### Trade Data from IMF
+Trade Data from IMF
 
 ```{r trade}
 #I use exports like DESTA did
   #use export from oecd to recipient, and then recipient to oecd
-#export in dollars
+#export in dollars ** I believe we have to correct for inflation ("All data are expressed in terms of US dollars. As most of the countries report in their national currency, US dollar equivalents are obtained by converting data at period average exchange rates published in lines rf or rh on the country pages in IFS.")
 
 trade <- read.csv(file="./raw_data/DOT_04-19-2018 19-48-46-85_panel.csv",
                       stringsAsFactors = F)
@@ -1076,18 +1082,24 @@ trade_year_uncorrected <- trade %>%
   select(exporting_ccode_imf = Country.Code,
          importing_ccode_imf = Counterpart.Country.Code,
          year = Time.Period,
-         export = Goods..Value.of.Exports..Free.on.board..FOB...US.Dollars..TXG_FOB_USD.) %>% #Q: do we need to correct for inflation?
+         export_uncorrected = Goods..Value.of.Exports..Free.on.board..FOB...US.Dollars..TXG_FOB_USD.) %>% #did not correct for inflation
   mutate(exporting_ccode = countrycode(exporting_ccode_imf, #change to CoW code from IMF code
                                        "imf",
                                        "cown"),
          importing_ccode = countrycode(importing_ccode_imf,
                                        "imf",
                                        "cown")) %>% 
-  filter(!is.na(exporting_ccode) & !is.na(importing_ccode)) 
+  filter(!is.na(exporting_ccode) & !is.na(importing_ccode)) %>%
+  left_join(select(deflators,
+                   -country_name),
+            by = "year") %>%
+  mutate(export_corrected = export_uncorrected/deflator) %>% #correcting for inflation (the data *seems* to be in current USD)
+  mutate_at(vars(contains("export_")),
+            list(log = ~log(. + 1)))
 
-  #since we need to create lags for trade data, I check for and fix the issue of missing years below
 
-trade_missing_year_list <- lapply(with(trade_clean %>%
+#since we need to create lags for trade data, I check for and fix the issue of missing years below
+trade_missing_year_list <- lapply(with(trade_year_uncorrected %>%
                                       mutate(ccode_both = paste0(exporting_ccode, #creating a variable for pairs for split()
                                                                  "_",
                                                                  importing_ccode)),
@@ -1124,14 +1136,13 @@ trade_clean <- trade_year_uncorrected %>%
             by = c("exporting_ccode",
                    "importing_ccode",
                    "year")) %>%
-  mutate(export_log = log(export + 1)) %>%
   group_by(exporting_ccode,
            importing_ccode) %>%
   arrange(exporting_ccode,
           importing_ccode,
           year) %>%
-  mutate_at(vars(matches("^export$|export_")),
-            list(`1` = lag))
+  mutate_at(vars(contains("export_")),
+            list(`1` = ~lag(.)))
 
 
 
@@ -1140,30 +1151,45 @@ trade_clean <- trade_year_uncorrected %>%
 ```
 
 
-### US military aid from foreign aid greenbook
+US military aid from foreign aid greenbook
 
-```{r}
+```{r usaid}
 
 #in 2016 constant dollars, obligations not disbursement
 
-us_military_aid <- read_excel("us_foreignaid_greenbook.xlsx", skip = 6) %>%
+us_aid <- read_excel("./raw_data/us_foreignaid_greenbook.xlsx", 
+                     skip = 6)
+
+us_military_aid_clean <- us_aid %>%
   rename(year = `Fiscal Year`,
          country_name = Country,
          category = `Assistance Category`,
-         military_aid = `Obligations (Constant Dollars)`) %>%
+         us_military_aid = `Obligations (Constant Dollars)`) %>%
   filter(category == "Military") %>%
   select(year,
          country_name,
-         military_aid) %>%
-  mutate(ccode2 = countrycode(country_name, "country.name", "cown")) %>%
-  filter(!is.na(ccode2)) %>%
-  group_by(year,
-           ccode2) %>%
-  summarise(military_aid = sum(military_aid)) %>%
+         us_military_aid) %>%
+  mutate(ccode2 = countrycode(country_name, 
+                              "country.name", 
+                              "cown")) %>%
+  filter(!is.na(ccode2) &
+           !is.na(year)) %>%
+  group_by(ccode2,
+           year) %>%
+  summarise(us_military_aid = sum(us_military_aid)) %>%
   ungroup() %>%
   group_by(ccode2) %>%
   complete(year = 1947:2016) %>%
-  mutate(military_aid = ifelse(is.na(military_aid), 0, military_aid))
+  arrange(ccode2,
+          year) %>%
+  mutate(us_military_aid = ifelse(is.na(us_military_aid), #will be logged after calculating per person amount during merge
+                                  0,
+                                  us_military_aid),
+         us_military_aid_1 = lag(us_military_aid),
+         us_military_aid_3 = lag(us_military_aid,
+                                 3),
+         us_military_aid_5 = lag(us_military_aid,
+                                 5))
 
 
 
@@ -1263,11 +1289,11 @@ mergedata3 <- left_join(mergedata2,
   left_join(us_military_aid,
             by = c("ccode2",
                    "year")) %>%
-  mutate(military_aid_corr = log((military_aid/r_pop_notlogged*1000)+1),
-         military_aid_corr_1 = lag(military_aid_corr, order_by = year),
-         military_aid_corr_3 = lag(military_aid_corr, 3, order_by = year),
-         military_aid_corr_5 = lag(military_aid_corr, 5, order_by = year),
-         dyad_id = paste(ccode1, ccode2, sep = "_")) #creating a dyad-id for augmented dickey fuller tests
+   mutate(military_aid_corr = log((military_aid/r_pop_notlogged*1000)+1),
+  #        military_aid_corr_1 = lag(military_aid_corr, order_by = year), #already done in US military aid section
+  #        military_aid_corr_3 = lag(military_aid_corr, 3, order_by = year),
+  #        military_aid_corr_5 = lag(military_aid_corr, 5, order_by = year)) %>%
+          dyad_id = paste(ccode1, ccode2, sep = "_")) #creating a dyad-id for augmented dickey fuller tests
 
 
 ######################## DONE with merging ######################
