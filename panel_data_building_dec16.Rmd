@@ -340,7 +340,7 @@ controls_index <- codelist_panel %>% #country-year DF from the countrycode packa
 
 
 
-```{r}
+```{r polity}
 
 #polityIV
 #1800-2016
@@ -485,7 +485,7 @@ pennwt_clean <- pwt90 %>%
 
 
 
-```{r}
+```{r ucdp}
 
 
 #Conflict Initiation dataset from Uppsala University (1946-2014)
@@ -548,7 +548,7 @@ basis_spline <- ns(ucdp_clean$peace_years, df=4)
 
 
 
-```{r}
+```{r wdi}
 #WDI dataset: Inflation and women in parliament (%)
   #merged with Paxton's dataset for WIP for the earlier years (WDI data has spotty observation before the early 2000s)
   #Paxton data for years upto 2002, and WDI data for years from 2003
@@ -683,7 +683,7 @@ wdi_paxton_merge <- wdi_clean %>%
 
 Unemployment data was added after the ORGB project but it is still a country level control variable, so I include it here
 
-```{r}
+```{r unemployment}
 
 wb_unemployment <- read.csv(file="./raw_data/Unemployment_WB.csv", 
                                    skip = 4,
@@ -790,7 +790,7 @@ How to add country-level control variables to the dyadic dataset
     - % Unemployment
   
 
-```{r}
+```{r control merge}
 #all of the country level controls are stored in the original_controls DF
 
 
@@ -798,6 +798,7 @@ crs_ip_country_controls <- crs_ip %>%
   left_join(original_controls %>% #merge the data for recipient countries
               select(cowcode,
                      year,
+                     country,
                      conflict_prior_year,
                      pop, #this is just used to correct the aid flow. This is in millions
                      polity2_dem_ord,
@@ -807,23 +808,26 @@ crs_ip_country_controls <- crs_ip %>%
                      rgdpe_pc_growth,
                      rgdpe_per_capita,
                      rdgpe_per_capita_log,
-                     pop_log_1000) %>%
+                     pop_log_1000,
+                     unemployment) %>%
               rename_at(vars(-c(cowcode,
                                 year)),
                         ~paste0("r_",
                                 .)),
             by = c("ccode2" = "cowcode", #ccode2 is for recipient countries
                               "year")) %>%
-  left_join(original_controls %>% #merge the data for donor countries. PICKUP from here
+  left_join(original_controls %>% #merge the data for donor countries. 
               select(cowcode,
                      year,
+                     country,
                      pop, #this is unlogged and in millions
                      rgdpe_pc_growth,
                      rgdpe_per_capita,
                      rdgpe_per_capita_log,
                      pop_log_1000,
                      consumer_inflation,
-                     women_parliament) %>%
+                     women_parliament,
+                     unemployment) %>%
               rename_at(vars(-c(cowcode,
                                 year)),
                         ~paste0("d_",
@@ -843,7 +847,10 @@ crs_ip_country_controls <- crs_ip %>%
                             n = 3),
                  `5` = ~lag(.,
                             n = 5))) %>%
-  mutate_at(vars(matches("^(d_|r_)")), #lags to measure the effect of previous year variables or FD (NEEDS VALIDATION)
+  mutate(unemployment_diff = d_unemployment - r_unemployment) %>% #unemployment differences- negative when donor has lower unemployment
+  mutate_at(c(vars(matches("^(d_|r_)")),
+              vars(-matches("country")),
+              vars(unemployment_diff)), #lags to measure the effect of previous year variables or FD (NEEDS VALIDATION)
             list(`1` = ~lag(.))) #something to check - a couple examples that I checked makes it look like a lag might have been applied to recipients variables but not donor. this might be a coincidents ** NEEDS VERIFICATION
 
   
@@ -924,7 +931,7 @@ desta_clean <- rbind(desta_simple,
   ungroup() %>%
   group_by(ccode1, 
            ccode2) %>%
-  complete(year = 1948:2017) %>% #creates rows for "missing" years - we assume that there were no PTAs in the missing years
+  complete(year = 1948:2017) %>% #creates rows for "missing" years - we assume that there were no PTAs in the absent years
   replace(is.na(.), 0) %>% #filling in the missing values for the rows we just created with "0"
   arrange(ccode1,
           ccode2,
@@ -934,7 +941,6 @@ desta_clean <- rbind(desta_simple,
          pta_count_1 = lag(pta_count))  
 
   
-#because there are missing years, the cumulative value and lagged values need to be calculated after merge
 ```
 
 
@@ -1203,7 +1209,7 @@ us_military_aid_clean <- us_aid %>%
 
 
 merged_dyadic <- crs_ip_country_controls %>%
-  left_join(select(cepii_clean,
+  left_join(select(cepii_clean, #selecting all necessary variables instead of deselecting variables for code visibility/clarity 
                    ccode1,
                    ccode2,
                    contig, #contiguity (sharing a border), boolean
@@ -1218,56 +1224,19 @@ merged_dyadic <- crs_ip_country_controls %>%
                    r_region,
                    same_region),
             by = c("ccode1",
-                   "ccode2"))
-
-
-mergedata3 <- left_join(mergedata2,
-                        select(cepii,
-                               contig,
-                               comlang_off,
-                               comlang_ethno,
-                               colony,
-                               dist,
-                               distw,
-                               distwces,
-                               ccode1,
-                               ccode2,
-                               distlog, #this is the log of simple distance
-                               d_region,
-                               r_region,
-                               samereg),
-                        by = c("ccode1",
-                               "ccode2")) %>%
-  left_join(desta_both,
+                   "ccode2")) %>%
+  left_join(desta_clean,
             by = c("ccode1",
                    "ccode2",
                    "year")) %>%
+  
+
+
+mergedata3 <- 
+
   group_by(ccode1, ccode2) %>%
   arrange(ccode1, ccode2, year) %>%
-  #mutate(ptacount = ifelse(is.na(ptacount), 0, ptacount), #added up duplicates already ## ALREADY DONE IN DESTA SECTION
-  #       ptasum = cumsum(ptacount), # Cumulative count of treaties - will need to autocorrelation
-  #       ptasum_1 = lag(ptasum, order_by = year),
-  #       ptacount_1 = lag(ptacount, order_by = year)) %>%
-  left_join(select(unemployment, #unemployment columns for recipient
-                   ccode,
-                   year,
-                   unemployment,
-                   unemployment_1),
-            by = c("ccode2" = "ccode",
-                   "year")) %>%
-  rename(r_unemployment = unemployment,
-         r_unemployment_1 = unemployment_1) %>%
-  left_join(select(unemployment, #unemployment columns for donors
-                   ccode,
-                   year,
-                   unemployment,
-                   unemployment_1),
-            by = c("ccode1" = "ccode",
-                   "year")) %>%
-  rename(d_unemployment = unemployment,
-         d_unemployment_1 = unemployment_1) %>%
-  mutate(unempdiff = d_unemployment - r_unemployment, #also a column for unemployment differences
-         unempdiff_1 = lag(unempdiff, order_by = year)) %>% #negative value: donor has less unemployment
+
   left_join(select(immigration,
                    -country1,
                    -country2),
