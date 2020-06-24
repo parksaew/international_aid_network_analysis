@@ -1229,58 +1229,47 @@ merged_dyadic <- crs_ip_country_controls %>%
             by = c("ccode1",
                    "ccode2",
                    "year")) %>%
-  
-
-
-mergedata3 <- 
-
-  group_by(ccode1, ccode2) %>%
-  arrange(ccode1, ccode2, year) %>%
-
-  left_join(select(immigration,
-                   -country1,
-                   -country2),
+  left_join(immigration_clean,
             by = c("ccode1",
                    "ccode2",
-                   "year")) %>% #adding a 5-year rolling sum of naturalization #*** June 2020 use rollsum from zoo or another known pack
-  # mutate(naturalization_roll = roll_sum(naturalization, 5, fill = NA, align = "right"), #right means x[i-2] + x[i-1] + x[i] (if n = 3) so that it doesn't look to the future
-  #        log_naturalization_roll = log(roll_sum(naturalization, 5, fill = NA, align = "right")+1),
-  #        log_naturalization_roll_1 = lag(log_naturalization_roll, order_by = year),
-  #        immigration_roll = roll_sum(immigration, 5, fill = NA, align = "right"),
-  #        log_immigration_roll = log(roll_sum(immigration, 5, fill = NA, align = "right")+1),
-  #        log_immigration_roll_1 = lag(log_immigration_roll, order_by = year)) %>% #*** already done in immigration section *****
-  left_join(select(trade, #need to merge separately to get d to r and r to d exports
-                   ccodeto,
-                   ccodefrom,
-                   year,
-                   export),
-            by = c("ccode1" = "ccodefrom",
-                   "ccode2" = "ccodeto",
                    "year")) %>%
-  rename(dtor_export = export) %>%
-  left_join(select(trade, #need to merge separately to get d to r and r to d exports
-                   ccodeto,
-                   ccodefrom,
-                   year,
-                   export),
-            by = c("ccode2" = "ccodefrom",
-                   "ccode1" = "ccodeto",
+  left_join(select(trade_clean, #first merging for donor to receipient exports
+                   -c(exporting_ccode_imf,
+                      importing_ccode_imf)),
+            by = c("ccode1" = "exporting_ccode",
+                   "ccode2" = "importing_ccode",
                    "year")) %>%
-  rename(rtod_export = export) %>%
-  # mutate(log_rtod_export = log(rtod_export+1), # already done in IMF trade section (June 2020) but need to add rtod or dtor
-  #        log_dtor_export = log(dtor_export+1),
-  #        rtod_export_1 = lag(rtod_export, order_by = year),
-  #        dtor_export_1 = lag(dtor_export, order_by = year),
-  #        log_rtod_export_1 = lag(log_rtod_export, order_by = year),
-  #        log_dtor_export_1 = lag(log_dtor_export, order_by = year)) %>%
-  left_join(us_military_aid,
+  rename_at(vars(matches("^export_")),
+            ~paste("d_to_r",
+                   .,
+                   sep = "_")) %>%
+  left_join(select(trade_clean, #second merging for recipient to donor exports
+                   -c(exporting_ccode_imf,
+                      importing_ccode_imf,
+                      deflator)), #since the deflator variable was added in the previous merge already
+            by = c("ccode2" = "exporting_ccode",
+                   "ccode1" = "importing_ccode",
+                   "year")) %>%
+  rename_at(vars(matches("^export_")),
+            ~paste("r_to_d",
+                   .,
+                   sep = "_")) %>%
+  left_join(us_military_aid_clean,
             by = c("ccode2",
                    "year")) %>%
-   mutate(military_aid_corr = log((military_aid/r_pop_notlogged*1000)+1),
-  #        military_aid_corr_1 = lag(military_aid_corr, order_by = year), #already done in US military aid section
-  #        military_aid_corr_3 = lag(military_aid_corr, 3, order_by = year),
-  #        military_aid_corr_5 = lag(military_aid_corr, 5, order_by = year)) %>%
-          dyad_id = paste(ccode1, ccode2, sep = "_")) #creating a dyad-id for augmented dickey fuller tests
+  mutate_at(vars(contains("us_military_aid")),
+            list(tempcor = ~log(./r_pop*1000) + 1)) %>% #correcting military aid amount by population ("tempcor" is just a placeholder)
+  rename_at(vars(matches("us_military_aid.*tempcor")),
+            ~gsub("^(us_military_aid)(.*)$", #renaming the new variables so that the lags are at the end of the var name
+                  "\\1_corrected\\2", #substituting the "tempcor" placeholder with "corrected"
+                  .) %>%
+              gsub("_tempcor",
+                   "",
+                   .)) %>%
+  mutate(dyad_id = paste(ccode1, #creating a dyad-id for augmented dickey fuller tests
+                         ccode2, 
+                         sep = "_")) 
+
 
 
 ######################## DONE with merging ######################
@@ -1288,13 +1277,11 @@ mergedata3 <-
 
 
 ###to do TWC with HC3 errors, turn data into pdata.frame and use plm
-mergepdata <- pdata.frame(mergedata3, index = c("ccode1", "ccode2"))
+merged_dyadic_plm <- pdata.frame(merged_dyadic,
+                                 index = c("ccode1", "ccode2"))
 
 #there are warning because of duplicate dyad (since I have years now)
 #let's proceed for now and see what happens
-
-#sanity check
-head(mergedata3[200:210,c(1,2,3,133,134,142,148,151)], n = 10)
 
 
 ```
@@ -1393,53 +1380,4 @@ mergedata4 <- mergedata3 %>%
  #I should lag all the dfs (DONE)
 
 ```
-
-
-
-
-
-
-
-```{r}
-
-# ###no iraq data
-# #remove the US and Iraq (or just Iraq)
-# mergepdata_noirq <- filter(mergepdata, ccode2 != 625 )
-# #countrycode("Iraq", "country.name", "cown")
-# 
-# #looks good
-# 
-# 
-# #let's export this as *.dta for later use
-#   # we need to take care of factors before converting to dta
-# 
-# mergepdata$iso_o <- as.character(mergepdata$iso_o)
-# mergepdata$iso_d <- as.character(mergepdata$iso_d)
-# 
-# mergepdata$region1 <- as.character(mergepdata$region1)
-# mergepdata$region2 <- as.character(mergepdata$region2)
-# 
-# mergepdata$continent1 <- as.character(mergepdata$continent1)
-# mergepdata$continent2 <- as.character(mergepdata$continent2)
-# 
-# class(mergepdata$region1)
-# 
-# table(sapply(mergepdata, is.factor))
-# 
-# write.dta(mergepdata, "C:/Users/Spark/Desktop/Winter_2018/ORGB_708/research/researchproj/708data_0421.dta", 
-#           convert.factors = "numeric")
-# 
-# 
-# #added oct 6 2018
-# aa <- read_dta("708data_0421.dta")
-# 
-# write.csv(aa, "UNGA_fulldata.csv", row.names = F)
-
-
-```
-
-
-
-
-
 
