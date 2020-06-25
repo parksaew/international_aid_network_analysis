@@ -1,6 +1,6 @@
 ---
 title: "panel_data_building"
-author: "SaewonPark"
+author: "Saewon Park"
 date: "April 23, 2018"
 output: html_document
 ---
@@ -241,7 +241,7 @@ crs_panel_clean <- crspanel %>%
   group_by(ccode1, ccode2, year, aid_type) %>%
   summarise(disburse = sum(disburse, na.rm = T),
             commit = sum(commit, na.rm = T)) %>%
-  pivot_wider(names_from = aid_type, #spread data s.t each combination of aid type by disbursement/commitment has a colum
+  pivot_wider(names_from = aid_type, #spread data s.t each combination of aid type by disbursement/commitment has a column
               values_from = c(disburse,
                               commit),
               names_sep = "_") %>%
@@ -1305,8 +1305,22 @@ merged_dyadic_plm <- pdata.frame(merged_dyadic,
 ######### I also need to double lag all variables and get the FD for ECM  ########
   #ipfd would be dropped and added as fd
   
-
 #for testing for stationarity and first difference model
+
+merged_dyadic2 <- merged_dyadic %>%
+  group_by(ccode1,
+           ccode2) %>%
+  arrange(ccode1,
+          ccode2,
+          year) %>%
+  mutate_at(vars(matches("^(immigration(_roll_sum)*|naturalization(_roll_sum)*)$")),
+            list(prop_log = ~ log(./d_pop)+1)) %>% #calculates immigration/naturalization as proportional to donor pop in mil
+  mutate_at(vars(matches("aid_corrected$")),
+            list(df = . - lag(.),
+                 df_lag = lag(. - lag(.)))) #try running this **
+  
+
+
 
 mergedata4 <- mergedata3 %>%
   group_by(ccode1, ccode2) %>%
