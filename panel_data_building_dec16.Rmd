@@ -17,6 +17,7 @@ pacman::p_load(tidyverse,
                bigrquery,
                DAMisc,
                splines) 
+#update tidyselct for perl
 
 
 lag <- dplyr::lag
@@ -284,13 +285,13 @@ ideal_points_clean <- select(ideal_points,
   arrange(ccode1, 
           ccode2, 
           year) %>% #arranging rows chronologically to calculate year-to-year changes and lags
-  mutate(ipfd = ipdiff - lag(ipdiff, order_by = year), #first difference
+  mutate(ip_fd = ipdiff - lag(ipdiff, order_by = year), #first difference
          ipdiff_1 = lag(ipdiff, order_by = year), # Ideal points diff- 1 yr, 3 yr, 5 yr (Savun's research uses 5 yr)
          ipdiff_3 = lag(ipdiff, order_by = year, n = 3),
          ipdiff_5 = lag(ipdiff, order_by = year, n = 5), # Similarly, ideal points FD- 1 yr, 3 yr, 5 yr
-         ipfd_1 = lag(ipfd, order_by = year),
-         ipfd_3 = lag(ipfd, order_by = year, n = 3),
-         ipfd_5 = lag(ipfd, order_by = year, n = 5)) 
+         ip_fd_1 = lag(ip_fd, order_by = year),
+         ip_fd_3 = lag(ip_fd, order_by = year, n = 3),
+         ip_fd_5 = lag(ip_fd, order_by = year, n = 5)) 
 
 #write.csv(ideal_points_clean, "./processed_data/ideal_points_expanded.csv", row.names = F) #commented out because this is memory intensive
 
@@ -612,7 +613,6 @@ paxton_wip <- read_dta("./raw_data/paxton_wipdata.dta")
 
 
 paxton_clean <- paxton_wip %>%
-  replace(. == "-88" | . == "-99", NA) %>% #label NAs correctly (-88 and -99 are missing data)
   mutate_at(vars(starts_with("P")),
             ~as.numeric(.)) %>%
   select_at(vars(contains("UNID"), #select just the country code, country name, and year columns
@@ -629,7 +629,8 @@ paxton_clean <- paxton_wip %>%
   mutate(year = as.numeric(year),
          cowcode = countrycode(UNID, "un", "cown", warn = TRUE)) %>%
   rename(country = COUNTRYN,
-         un_id = UNID)
+         un_id = UNID) %>%
+  replace(. == "-88" | . == "-99", NA)  #label NAs correctly (-88 and -99 are missing data)
   
 
 #In the previous code, I created a separate dataset of the ratio of women in parliament just for donor countries since this was used as an instrumental variable. for the current version of the data cleaning script, I address this later on.
@@ -1258,7 +1259,7 @@ merged_dyadic <- crs_ip_country_controls %>%
             by = c("ccode2",
                    "year")) %>%
   mutate_at(vars(contains("us_military_aid")),
-            list(tempcor = ~log(./r_pop*1000) + 1)) %>% #correcting military aid amount by population ("tempcor" is just a placeholder)
+            list(tempcor = ~log((./r_pop*1000) + 1))) %>% #correcting military aid amount by population ("tempcor" is just a placeholder)
   rename_at(vars(matches("us_military_aid.*tempcor")),
             ~gsub("^(us_military_aid)(.*)$", #renaming the new variables so that the lags are at the end of the var name
                   "\\1_corrected\\2", #substituting the "tempcor" placeholder with "corrected"
@@ -1294,18 +1295,19 @@ merged_dyadic_plm <- pdata.frame(merged_dyadic,
 
 
 ```{r}
-########## I need to remove all missing aidflow corrected value#######
-  #since we can't have missing Y
-
-# mergedata <- filter(mergedata, 
-#                      !is.na(aidflow_corrected) & !is.nan(aidflow_corrected) & !is.infinite(aidflow_corrected))
-  # I would not do this because we still need to lag data
 
 
-######### I also need to double lag all variables and get the FD for ECM  ########
-  #ipfd would be dropped and added as fd
-  
-#for testing for stationarity and first difference model
+# custom functions from https://stackoverflow.com/questions/47889573/use-perl-true-regex-in-dplyr-select because I am using perl compatible regex (with look aheads and look behinds) but dplyr's match does not have an option to activate the perl option
+matches2 <- function (match, ignore.case = TRUE, vars = tidyselect::peek_vars()) 
+  {
+    grep_vars2(match, vars, ignore.case = ignore.case)
+  }
+
+grep_vars2 <- function (needle, haystack, ...) 
+  {
+    grep(needle, haystack, perl = TRUE, ...)
+  }
+
 
 merged_dyadic2 <- merged_dyadic %>%
   group_by(ccode1,
@@ -1313,85 +1315,39 @@ merged_dyadic2 <- merged_dyadic %>%
   arrange(ccode1,
           ccode2,
           year) %>%
+  mutate(other_economic_aid = disburse_disaster_aid + #aggregation of other economic aid to compare easily to democracy aid
+           disburse_econ_capacity_aid +
+           disburse_other_aid + 
+           disburse_production_aid +
+           disburse_program_aid +
+           disburse_social_aid,
+         other_economic_aid_corrected = log((other_economic_aid/r_pop*1000) + 1)) %>% #same processing method as other aid types
+  mutate_at(vars(contains("other_economic_aid")),
+            list(`1` = ~ lag(.))) %>%
   mutate_at(vars(matches("^(immigration(_roll_sum)*|naturalization(_roll_sum)*)$")),
             list(prop_log = ~ log(./d_pop)+1)) %>% #calculates immigration/naturalization as proportional to donor pop in mil
-  mutate_at(vars(matches("aid_corrected$")),
-            list(df = . - lag(.),
-                 df_lag = lag(. - lag(.)))) #try running this **
+  mutate_at(vars(matches("(aid_corrected$)|(^(r_|d_)(?!to_).*(?<!\\d)(?<!country)(?<!region)$)|(^(pta_).*(?<!\\d)$)|(^unemployment_diff$)|(^(immigration|naturalization).*(?<!sum_1)$)|(export_corrected(_log)*$)", 
+                         perl = T)), #see notes below explaining the regex
+            list(fd = ~(. - lag(.)), #first differences (needed for ECM, stationarity testing, and the FD model)
+                 fd_lag = ~lag(. - lag(.))))  #first difference lagged
   
+  
+#regex:
+  # - matches aid variables that are not lagged (meaning the ending is always "aid_corrected")
+  # - donor and recipient variables (starts with d_ or r_) that are not lagged (meaning they don't end with a number) and is not the country name (meaning they don't end with "country")
+  # - pta variables (count and cumulative sums) that are not lagged (meaning they don't end with a number)
+  # - difference in unemployment
+  # - immigration and naturalization except for the lag of roll sums (meaning they don't end with "sum_1")
+  # - corrected export values, logged and not logged. But not lagged values (meaning they only end with "corrected" or "log")
 
 
-
-mergedata4 <- mergedata3 %>%
-  group_by(ccode1, ccode2) %>%
-  mutate(naturalization_prop_log = log(naturalization/(d_pop_notlogged)+1), #proportional to donor pop in mil
-         immigration_prop_log = log(immigration/(d_pop_notlogged)+1),
-         naturalization_roll_prop_log = log(naturalization_roll/(d_pop_notlogged)+1),
-         immigration_roll_prop_log = log(immigration_roll/(d_pop_notlogged)+1)) %>%
-  mutate_all(.funs = funs(lag = lag(., order_by = year))) %>%
-  select(-dyad_id_lag) %>%
-  mutate(democracy_aid_com_corr_df = democracy_aid_com_corr - democracy_aid_com_corr_lag,
-         democracy_aid_disb_corr_df = democracy_aid_disb_corr - democracy_aid_disb_corr_lag,
-         democracy_aid_com_corr_df_lag = lag(democracy_aid_com_corr_df, order_by = year),
-         democracy_aid_disb_corr_df_lag = lag(democracy_aid_disb_corr_df, order_by = year),
-         disaster_aid_com_corr_df = disaster_aid_com_corr - disaster_aid_com_corr_lag,
-         econ_capacity_aid_com_corr_df = econ_capacity_aid_com_corr - econ_capacity_aid_com_corr_lag,
-         other_aid_com_corr_df = other_aid_com_corr - other_aid_com_corr_lag,
-         production_aid_com_corr_df = production_aid_com_corr - production_aid_com_corr_lag,
-         program_aid_com_corr_df = program_aid_com_corr - program_aid_com_corr_lag,
-         social_aid_com_corr_df = social_aid_com_corr - social_aid_com_corr_lag,
-         disaster_aid_disb_corr_df = disaster_aid_disb_corr - disaster_aid_disb_corr_lag,
-         econ_capacity_aid_disb_corr_df =econ_capacity_aid_disb_corr - econ_capacity_aid_disb_corr_lag,
-         other_aid_disb_corr_df = other_aid_disb_corr - other_aid_disb_corr_lag,
-         production_aid_disb_corr_df = production_aid_disb_corr - production_aid_disb_corr_lag,
-         program_aid_disb_corr_df = program_aid_disb_corr - program_aid_disb_corr_lag,
-         social_aid_disb_corr_df = social_aid_disb_corr - social_aid_disb_corr_lag,
-         r_conflict_prioryear_df = r_conflict_prioryear - r_conflict_prioryear_lag, #I skip ipdiff bc it is already fd
-         r_politychange_df = r_politychange - r_politychange_lag,
-         r_democracy_df = r_democracy - r_democracy_lag,
-         r_gdp_growth_df = r_gdp_growth - r_gdp_growth_lag,
-         r_gdp_df = r_gdp - r_gdp_lag,
-         r_population_df = r_population - r_population_lag,
-         r_democratization_df = r_democratization - r_democratization_lag,
-         r_gdplog_df = r_gdplog - r_gdplog_lag,
-         r_democracy_sq_df = r_democracy_sq - r_democracy_sq_lag,
-         d_gdp_growth_df = d_gdp_growth - d_gdp_growth_lag,
-         d_gdp_df = d_gdp - d_gdp_lag,
-         d_population_df = d_population - d_population_lag,
-         #d_consumer_inflation_df = d_consumer_inflation - d_consumer_inflation_lag,  # this a chr vector
-         d_women_parliament_df = d_women_parliament - d_women_parliament_lag,
-         d_gdplog_df = d_gdplog - d_gdplog_lag,
-         ptacount_df = ptacount - ptacount_lag,
-         ptasum__df = ptasum - ptasum_lag,
-         unempdiff_df = unempdiff - unempdiff_lag,
-         log_immigration_df = log_immigration - log_immigration_lag,
-         log_immigration_5_df = log_immigration_5 - log_immigration_5_lag,
-         log_naturalization_df = log_naturalization - log_naturalization_lag,
-         log_naturalization_1_df = log_naturalization_1 - log_naturalization_1_lag,
-         log_naturalization_3_df = log_naturalization_3 - log_naturalization_3_lag,
-         log_naturalization_roll_df = log_naturalization_roll - log_naturalization_roll_lag,
-         log_immigration_roll_lag = log_immigration_roll - log_immigration_roll_lag,
-         log_rtod_export_df = log_rtod_export - log_rtod_export_lag,
-         log_dtor_export_df = log_dtor_export - log_dtor_export_lag,
-         military_aid_df = military_aid - military_aid_lag,
-         military_aid_corr_df = military_aid_corr - military_aid_corr_lag,
-         other_economic_aid = log(((disaster_aid_disb +
-                                    econ_capacity_aid_disb +
-                                    other_aid_disb + 
-                                    production_aid_disb +
-                                    program_aid_disb +
-                                    social_aid_disb)/1000)+1),
-         other_economic_aid_lag = lag(other_economic_aid, order_by = year),
-         other_economic_aid_df = other_economic_aid - other_economic_aid_lag,
-         naturalization_prop_log_df = naturalization_prop_log - naturalization_prop_log_lag,
-         immigration_prop_log_df = immigration_prop_log - immigration_prop_log_lag,
-         naturalization_roll_prop_log_df = naturalization_roll_prop_log - naturalization_roll_prop_log_lag,
-         immigration_roll_prop_log_df = immigration_roll_prop_log - immigration_roll_prop_log_lag) %>%
-  mutate_at(vars(ends_with("_df")),
-            .funs = funs(lag = lag(., order_by = year)))
-
-#str(mergedata4[ , 250:338])
- #I should lag all the dfs (DONE)
+# Old notes:
+  # I need to remove all missing aidflow corrected value
+    #since we can't have missing Y
+  # mergedata <- filter(mergedata, 
+  #                      !is.na(aidflow_corrected) & !is.nan(aidflow_corrected) & !is.infinite(aidflow_corrected))
+    #but I would not do this because we still need to lag data 
+      #June 2020 note *** : not sure if this is still necessary
 
 ```
 
