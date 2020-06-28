@@ -17,7 +17,6 @@ pacman::p_load(tidyverse,
                bigrquery,
                DAMisc,
                splines) 
-#update tidyselct for perl
 
 
 lag <- dplyr::lag
@@ -1208,7 +1207,19 @@ us_military_aid_clean <- us_aid %>%
 
 ```{r merge}
 
+# custom functions from https://stackoverflow.com/questions/47889573/use-perl-true-regex-in-dplyr-select because I am using perl compatible regex (with look aheads and look behinds) but dplyr's match does not have an option to activate the perl option
+matches2 <- function (match, ignore.case = TRUE, vars = tidyselect::peek_vars()) 
+  {
+    grep_vars2(match, vars, ignore.case = ignore.case)
+  }
 
+grep_vars2 <- function (needle, haystack, ...) 
+  {
+    grep(needle, haystack, perl = TRUE, ...)
+  }
+
+
+#final dataframe
 merged_dyadic <- crs_ip_country_controls %>%
   left_join(select(cepii_clean, #selecting all necessary variables instead of deselecting variables for code visibility/clarity 
                    ccode1,
@@ -1269,47 +1280,7 @@ merged_dyadic <- crs_ip_country_controls %>%
                    .)) %>%
   mutate(dyad_id = paste(ccode1, #creating a dyad-id for augmented dickey fuller tests
                          ccode2, 
-                         sep = "_")) 
-
-
-
-######################## DONE with merging ######################
-#################################################################
-
-
-###to do TWC with HC3 errors, turn data into pdata.frame and use plm
-merged_dyadic_plm <- pdata.frame(merged_dyadic,
-                                 index = c("ccode1", "ccode2"))
-
-#there are warning because of duplicate dyad (since I have years now)
-#let's proceed for now and see what happens
-
-
-```
-
-
-
-
-
-### Corrections, other cleaning tasks
-
-
-```{r}
-
-
-# custom functions from https://stackoverflow.com/questions/47889573/use-perl-true-regex-in-dplyr-select because I am using perl compatible regex (with look aheads and look behinds) but dplyr's match does not have an option to activate the perl option
-matches2 <- function (match, ignore.case = TRUE, vars = tidyselect::peek_vars()) 
-  {
-    grep_vars2(match, vars, ignore.case = ignore.case)
-  }
-
-grep_vars2 <- function (needle, haystack, ...) 
-  {
-    grep(needle, haystack, perl = TRUE, ...)
-  }
-
-
-merged_dyadic2 <- merged_dyadic %>%
+                         sep = "_")) %>%
   group_by(ccode1,
            ccode2) %>%
   arrange(ccode1,
@@ -1330,8 +1301,21 @@ merged_dyadic2 <- merged_dyadic %>%
                          perl = T)), #see notes below explaining the regex
             list(fd = ~(. - lag(.)), #first differences (needed for ECM, stationarity testing, and the FD model)
                  fd_lag = ~lag(. - lag(.))))  #first difference lagged
-  
-  
+
+
+
+
+
+
+#to do TWC with HC3 errors, turn data into pdata.frame and use plm
+merged_dyadic_plm <- pdata.frame(merged_dyadic,
+                                 index = c("ccode1", "ccode2"))
+
+
+
+
+## Notes ##
+
 #regex:
   # - matches aid variables that are not lagged (meaning the ending is always "aid_corrected")
   # - donor and recipient variables (starts with d_ or r_) that are not lagged (meaning they don't end with a number) and is not the country name (meaning they don't end with "country")
@@ -1343,11 +1327,19 @@ merged_dyadic2 <- merged_dyadic %>%
 
 # Old notes:
   # I need to remove all missing aidflow corrected value
-    #since we can't have missing Y
+    #since we can't have missing Y 
+      #June 2020 note *** : not sure if this is still necessary (also NAs were filled with 0s so we need to check what is still NA)
   # mergedata <- filter(mergedata, 
   #                      !is.na(aidflow_corrected) & !is.nan(aidflow_corrected) & !is.infinite(aidflow_corrected))
     #but I would not do this because we still need to lag data 
       #June 2020 note *** : not sure if this is still necessary
+  #for the pdata.frame there are warning because of duplicate dyad (since I have years now)
+    #let's proceed for now and see what happens
+
 
 ```
 
+
+
+
+```{r google cloud storage}
