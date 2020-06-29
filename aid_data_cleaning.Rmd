@@ -27,7 +27,7 @@ lead <- dplyr::lead
 
 
 
-```{r bigquery, echo=FALSE}
+```{r big query, echo=FALSE}
 
 #bigrquery only supports uploading tables up to 1 GB. crspanel is 2.5 GB so I will export it as a csv and upload it using the UI
   #bigQueryR is another package that connects R to BigQuery, and seems to allow bigger uploads. Could be something to consider in the future
@@ -44,18 +44,18 @@ lead <- dplyr::lead
   #https://cran.r-project.org/web/packages/bigrquery/bigrquery.pdf
   #https://www.rdocumentation.org/packages/bigrquery/versions/1.2.0
   #uploading: https://rdrr.io/cran/bigrquery/man/api-table.html
-  #bigQueryR uploading: https://rdrr.io/cran/bigQueryR/man/bqr_upload_data.html
+  #bigQueryR (different package) uploading: https://rdrr.io/cran/bigQueryR/man/bqr_upload_data.html
   #googleCloudStorage: http://code.markedmondson.me/googleCloudStorageR/articles/googleCloudStorageR.html 
 
 #bigquery authentication
-#bq_auth(use_oob = TRUE) #not sure if I have to keep doing this
+bq_auth(use_oob = TRUE) #not sure if I have to keep doing this
 
 gcp_project <- "intl-aid-network-analysis"
 
 
 #test to see that the connection works
-#aa <- bq_project_query(gcp_project, "SELECT Year FROM crs_panel_1973_2016.original_combined_1973_2016 LIMIT 5")
-#bb <- bq_table_download(aa, max_results = 5)
+aa <- bq_project_query(gcp_project, "SELECT Year FROM analysis_input.crs_combined LIMIT 5")
+bb <- bq_table_download(aa, max_results = 5)
 #works
 
 ```
@@ -1304,15 +1304,15 @@ merged_dyadic <- crs_ip_country_controls %>%
                  fd_lag = ~lag(. - lag(.))))  #first difference lagged
 
 
-
-
-
-
 #to do TWC with HC3 errors, turn data into pdata.frame and use plm
 merged_dyadic_plm <- pdata.frame(merged_dyadic,
                                  index = c("ccode1", "ccode2"))
 
 
+#export as csv (warning: long execution time)
+write.csv(merged_dyadic,
+          "./processed_data/merged_dyadic_analysis_data.csv",
+          row.names = F)
 
 
 ## Notes ##
@@ -1345,24 +1345,29 @@ merged_dyadic_plm <- pdata.frame(merged_dyadic,
 
 ```{r google cloud storage}
 
-#create service account key: https://cloud.google.com/docs/authentication/getting-started
-#then continue on tutorial: http://code.markedmondson.me/googleCloudStorageR/articles/googleCloudStorageR.html
+
+#tutorial: http://code.markedmondson.me/googleCloudStorageR/articles/googleCloudStorageR.html
+  #the auto-authentication and auto-default bucket set up is not working so I do them manually
   #upload to bucket i created earlier, but for processed data
 
 
-#Setting up auto-authentication using the service account JSON file taken from your Google Project:
-Sys.setenv("GCS_AUTH_FILE" = "C:/Users/Spark/Desktop/McGill/Winter_2018/ORGB_708/research/researchproj/processed_data/Intl Aid Network Analysis-4adb84e3438b.json",
-           "GCS_DEFAULT_BUCKET" = "large_processed_data") #not sure if I have to do this every time
+
+#authenticating using the JSON file taken from my Google Project
+gcs_auth("C:/Users/Spark/Desktop/McGill/Winter_2018/ORGB_708/research/researchproj/processed_data/processed_data_upload_intl_aid.json")
+
+#setting the default bucket
+gcs_global_bucket("large_processed_data")
 
 
-#using auto-authentication
-gcs_get_bucket("large_processed_data")
+#uploading merged_dyadic csv file to default bucket
+merged_dyadic_gcs_upload <- gcs_upload("./processed_data/merged_dyadic_analysis_data.csv",
+                                       bucket = "large_processed_data") 
+  #this fails while uploading every time (seems to be an issue with the package or internet connection)
 
-gcs_get_global_bucket()
+merged_dyadic_gcs_upload #when successful this should show the metadata
 
-#still have issues with authentication (I wonder if it is clashing with bigqueryr)
-
-
+#checking that uploaded object is listed under the default bucket
+gcs_list_objects()
 
 ```
 
