@@ -15,6 +15,7 @@ pacman::p_load(tidyverse,
                plm,
                zoo,
                bigrquery,
+               googleCloudStorageR,
                DAMisc,
                splines) 
 
@@ -1343,3 +1344,27 @@ merged_dyadic_plm <- pdata.frame(merged_dyadic,
 
 
 ```{r google cloud storage}
+
+#create service account key: https://cloud.google.com/docs/authentication/getting-started
+#then continue on tutorial: http://code.markedmondson.me/googleCloudStorageR/articles/googleCloudStorageR.html
+  #upload to bucket i created earlier, but for processed data
+
+
+#Setting up auto-authentication using the service account JSON file taken from your Google Project:
+Sys.setenv("GCS_AUTH_FILE" = "C:/Users/Spark/Desktop/McGill/Winter_2018/ORGB_708/research/researchproj/processed_data/Intl Aid Network Analysis-4adb84e3438b.json",
+           "GCS_DEFAULT_BUCKET" = "large_processed_data") #not sure if I have to do this every time
+
+
+#using auto-authentication
+gcs_get_bucket("large_processed_data")
+
+gcs_get_global_bucket()
+
+#still have issues with authentication (I wonder if it is clashing with bigqueryr)
+
+
+
+```
+
+
+
