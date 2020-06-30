@@ -1,0 +1,54 @@
+---
+title: "Descriptives and Data Exploration - International Aid"
+author: "Saewon Park"
+date: "June 30, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+pacman::p_load(tidyverse,
+               corrplot)
+```
+
+
+## Purpose
+
+This analysis explores the dataset created by "aid_data_cleaning.Rmd" in order to understand the data and plan for an appropriate shiny dashboard to present initial insights from the data in the most efficient way.
+
+
+
+### Loading the data
+
+```{r data import}
+
+#importing the final dataset created by "aid_data_cleaning.Rmd"
+merged_dyadic <- read.csv("./processed_data/merged_dyadic_analysis_data.csv",
+                          stringsAsFactors = F)
+
+```
+
+
+## Descriptives
+
+```{r basic descriptives}
+
+#to show more data in the console
+options(max.print=4000)
+
+#just seeing the summary of all variables
+summary(merged_dyadic)
+  #might want to fix:
+    #imigration/naturalization prop logs (there are Infs)
+  #note that all country level controls are already lagged one year
+
+#corrplot
+
+#trendlines (dyads as obs, year as x var, y as each var)
+
+#missing data distribution (amelia)
+
+```
+
+

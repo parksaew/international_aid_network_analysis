@@ -716,7 +716,7 @@ Bind all the ORGB 708 controls + unemployment together into one dataframe
 
   - This is not necessary and all the DFs can be merged at the very end, but it does make things easier to manage
 
-```{r}
+```{r controls merge}
 
 #merge all the controls from the original ORGB 708 research
 
@@ -757,6 +757,7 @@ original_controls_unlagged <- controls_index %>%
   arrange(cowcode,
           year)
 
+#leading the "year" variable so that all controls are lagged
 original_controls <- original_controls_unlagged %>%
   mutate(year = lead(year))
   
