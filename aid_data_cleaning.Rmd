@@ -1360,11 +1360,11 @@ gcs_global_bucket("large_processed_data")
 
 
 #uploading merged_dyadic csv file to default bucket
-merged_dyadic_gcs_upload <- gcs_upload("./processed_data/merged_dyadic_analysis_data.csv",
-                                       bucket = "large_processed_data") 
+# merged_dyadic_gcs_upload <- gcs_upload("./processed_data/merged_dyadic_analysis_data.csv",
+#                                        bucket = "large_processed_data") 
   #this fails while uploading every time (seems to be an issue with the package or internet connection)
 
-merged_dyadic_gcs_upload #when successful this should show the metadata
+# merged_dyadic_gcs_upload #when successful this should show the metadata
 
 #checking that uploaded object is listed under the default bucket
 gcs_list_objects()
