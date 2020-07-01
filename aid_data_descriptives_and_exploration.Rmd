@@ -32,18 +32,44 @@ merged_dyadic <- read.csv("./processed_data/merged_dyadic_analysis_data.csv",
 
 ## Descriptives
 
-```{r basic descriptives}
+```{r summary stats}
 
 #to show more data in the console
 options(max.print=4000)
 
 #just seeing the summary of all variables
 summary(merged_dyadic)
-  #might want to fix:
-    #imigration/naturalization prop logs (there are Infs)
-  #note that all country level controls are already lagged one year
+  #note that all country level controls are already lagged one year (think about whether to change this or not)
+```
 
+
+
+```{r correlation}
 #corrplot
+corr_all_merged <- cor(select(merged_dyadic %>% #cor object to feed into corrplot
+                                ungroup(), #ungrouping so that I can remove ccodes
+                              -c(ccode1,
+                                 ccode2,
+                                 r_country,
+                                 d_country,
+                                 r_region,
+                                 d_region,
+                                 dyad_id)) %>%
+                                select_at(c(vars(-matches("(_(\\d)+|_lag|_log|_corrected|_fd|_sum)$")),
+                                          vars(-matches("^(commit_|distw)")))), 
+                       use = "pairwise.complete.obs")
+
+
+corrplot(corr_all_merged,
+         type = "upper") #no surprises here
+
+#should un-lag controls for this (or lag everything)
+
+```
+
+
+
+```{r}
 
 #trendlines (dyads as obs, year as x var, y as each var)
 

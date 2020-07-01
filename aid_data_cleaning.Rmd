@@ -1298,7 +1298,7 @@ merged_dyadic <- crs_ip_country_controls %>%
   mutate_at(vars(contains("other_economic_aid")),
             list(`1` = ~ lag(.))) %>%
   mutate_at(vars(matches("^(immigration(_roll_sum)*|naturalization(_roll_sum)*)$")),
-            list(prop_log = ~ log(./d_pop)+1)) %>% #calculates immigration/naturalization as proportional to donor pop in mil
+            list(prop_log = ~ log((./d_pop)+1))) %>% #calculates immigration/naturalization as proportional to donor pop in mil
   mutate_at(vars(matches("(aid_corrected$)|(^(r_|d_)(?!to_).*(?<!\\d)(?<!country)(?<!region)$)|(^(pta_).*(?<!\\d)$)|(^unemployment_diff$)|(^(immigration|naturalization).*(?<!sum_1)$)|(export_corrected(_log)*$)", 
                          perl = T)), #see notes below explaining the regex
             list(fd = ~(. - lag(.)), #first differences (needed for ECM, stationarity testing, and the FD model)
