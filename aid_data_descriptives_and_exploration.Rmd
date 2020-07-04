@@ -69,12 +69,37 @@ corrplot(corr_all_merged,
 
 
 
-```{r}
+```{r trendlines}
 
-#trendlines (dyads as obs, year as x var, y as each var)
+#trendlines (dyads as obs, year as x var, each var as y var)
+
+```
+
+
+
+
+
+```{r missing data}
+
 
 #missing data distribution (amelia)
 
 ```
 
+
+
+
+```{r ggplots}
+
+#first build the individual plots that will go in the dashboard and then combine them into a dashboard
+  #1. Map plot (doesn't have to be an exact map, but needs to visually show all countries, and would be useful if they are somewhat in their geographical positions)
+    #some resources:
+      #https://www.r-graph-gallery.com/hexbin-map.html 
+  #2. Top 5 plot/list
+  #3. Overall volume trend plot
+
+
+
+
+```
 

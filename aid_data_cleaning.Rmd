@@ -797,7 +797,7 @@ How to add country-level control variables to the dyadic dataset
 
 
 crs_ip_country_controls <- crs_ip %>%
-  left_join(original_controls %>% #merge the data for recipient countries
+  left_join(original_controls_unlagged %>% #merge data for recipient countries (used the unlagged one because dyad data are unlagged)
               select(cowcode,
                      year,
                      country,
