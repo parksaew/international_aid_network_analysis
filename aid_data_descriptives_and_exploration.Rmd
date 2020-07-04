@@ -30,7 +30,7 @@ merged_dyadic <- read.csv("./processed_data/merged_dyadic_analysis_data.csv",
 ```
 
 
-## Descriptives
+## Descriptives & Data Exploration
 
 ```{r summary stats}
 
@@ -41,6 +41,7 @@ options(max.print=4000)
 summary(merged_dyadic)
   #note that all country level controls are already lagged one year (think about whether to change this or not)
 ```
+
 
 
 
@@ -73,6 +74,12 @@ corrplot(corr_all_merged,
 
 #trendlines (dyads as obs, year as x var, each var as y var)
 
+
+
+merged_dyadic_plot <- merged_dyadic %>%
+  mutate(dyad_name = paste0(d_country, " - ", r_country)) #create human-readable dyad names
+
+
 ```
 
 
@@ -88,6 +95,7 @@ corrplot(corr_all_merged,
 
 
 
+## Plots for dashboard
 
 ```{r ggplots}
 
