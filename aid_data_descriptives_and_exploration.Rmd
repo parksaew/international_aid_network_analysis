@@ -6,10 +6,13 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
+
 knitr::opts_chunk$set(echo = TRUE)
 
 pacman::p_load(tidyverse,
                corrplot)
+
+
 ```
 
 
@@ -25,7 +28,10 @@ This analysis explores the dataset created by "aid_data_cleaning.Rmd" in order t
 
 #importing the final dataset created by "aid_data_cleaning.Rmd"
 merged_dyadic <- read.csv("./processed_data/merged_dyadic_analysis_data.csv",
-                          stringsAsFactors = F)
+                          stringsAsFactors = F) 
+
+
+#Note: first I used lagged country-level controls and then changed to unlagged so that all variables (country-level or dyad-level) match on year
 
 ```
 
@@ -46,25 +52,31 @@ summary(merged_dyadic)
 
 
 ```{r correlation}
+
+
+#create a df without the lags easier exploratory analysis 
+  #so that map functions for all numeric variables can be used easily 
+  #remove lags, logs, and other transformations
+numeric_dyadic <- merged_dyadic %>%
+  ungroup() %>% #ungrouping because I won't necessarily use ccodes for plotting
+  select_at(c(vars(-matches("(_(\\d)+|_lag|_log|_squared|_corrected|_fd|_sum)$")),
+              vars(-matches("^(commit_|distw)"))))
+
 #corrplot
-corr_all_merged <- cor(select(merged_dyadic %>% #cor object to feed into corrplot
-                                ungroup(), #ungrouping so that I can remove ccodes
+corr_all_merged <- cor(select(numeric_dyadic, #cor object to feed into corrplot
                               -c(ccode1,
                                  ccode2,
                                  r_country,
                                  d_country,
                                  r_region,
                                  d_region,
-                                 dyad_id)) %>%
-                                select_at(c(vars(-matches("(_(\\d)+|_lag|_log|_corrected|_fd|_sum)$")),
-                                          vars(-matches("^(commit_|distw)")))), 
+                                 dyad_id)), 
                        use = "pairwise.complete.obs")
 
 
 corrplot(corr_all_merged,
          type = "upper") #no surprises here
 
-#should un-lag controls for this (or lag everything)
 
 ```
 
@@ -76,8 +88,44 @@ corrplot(corr_all_merged,
 
 
 
-merged_dyadic_plot <- merged_dyadic %>%
-  mutate(dyad_name = paste0(d_country, " - ", r_country)) #create human-readable dyad names
+#transforming the df so that I can facet by the numeric variables
+merged_dyadic_plot <- numeric_dyadic %>%
+  mutate(dyad_name = paste0(d_country, " - ", r_country)) %>% #create human-readable dyad names
+  select(-c(ccode1, #remove non-numeric vars except for dyad_name and (d_/r_)region
+            ccode2,
+            r_country,
+            d_country,
+            dyad_id)) %>%
+  pivot_longer(-c(dyad_name,
+                  year,
+                  r_region,
+                  d_region,
+                  contig,
+                  comlang_off,
+                  comlang_ethno,
+                  colony,
+                  dist),
+               names_to = "numeric_var",
+               values_to = "value")
+  
+
+#checking that the faceted plot works by using a sample (because the whole data is very big)
+merged_dyadic_plot_sample <- merged_dyadic_plot %>%
+  filter(d_region == "North America")
+  
+  
+trendline_exploratory_sample <- ggplot(merged_dyadic_plot_sample) +
+  geom_line(aes(x = year,
+                y = value,
+                color = dyad_name)) +
+  facet_wrap(~ numeric_var,
+             scales = "free_y") +
+  theme_bw() + 
+  theme(legend.position = "none") 
+
+trendline_exploratory_sample
+
+#I think some variables need to be points or other visualizations
 
 
 ```
@@ -102,7 +150,10 @@ merged_dyadic_plot <- merged_dyadic %>%
 #first build the individual plots that will go in the dashboard and then combine them into a dashboard
   #1. Map plot (doesn't have to be an exact map, but needs to visually show all countries, and would be useful if they are somewhat in their geographical positions)
     #some resources:
-      #https://www.r-graph-gallery.com/hexbin-map.html 
+      #https://www.r-graph-gallery.com/hexbin-map.html
+      #https://www.gapminder.org/tools/ 
+      #https://flowingdata.com/
+      #could be a circular visualization or a variation of it (circle with network visualization)
   #2. Top 5 plot/list
   #3. Overall volume trend plot
 
