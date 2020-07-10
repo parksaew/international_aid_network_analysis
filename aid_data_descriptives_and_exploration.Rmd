@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 pacman::p_load(tidyverse,
                corrplot,
                shiny,
-               Amelia)
+               naniar)
 
 
 ```
@@ -140,18 +140,28 @@ trendline_exploratory_sample_gplot
 
 ```{r missing data}
 
-#missing data distribution (amelia)
+#not using Amelia because it is heavy and crashes R. Plus, we're not doing imputation at this point
 
-numeric_dyadic_amelia <- amelia(x = numeric_dyadic %>%
-                                  select(-c(r_country,
-                                            d_country,
-                                            r_region,
-                                            d_region,
-                                            dyad_id)),
-                                ts = "year",
-                                cs = "dyad_name")
+#other packages:
+  #naniar by a stats PhD: https://cran.r-project.org/web/packages/naniar/vignettes/naniar-visualisation.html
+    #the plots are prettier
+  #VIM as recommended by Datacamp: https://www.datacamp.com/community/tutorials/visualize-data-vim-package
+    # the parallel coordinate plot (parcoordMiss()) is pretty cool
 
-missmap(numeric_dyadic)
+#let's try to use naniar first
+  #the data is quite big, so I divide into recipient variables, donor variables, and dyadic variables
+
+
+#recipient variables
+gg_miss_fct(numeric_dyadic %>% 
+           filter(d_region == "North America") %>% #reducing the data so that the function works
+           select_at(c(vars(matches("^r_")),
+                       vars(year))),
+           year) + #I love this
+  labs(title = "Missing data in recipient-side variables")
+
+
+ 
 
 ```
 
