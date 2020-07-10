@@ -133,7 +133,7 @@ https://cloud.google.com/ai-platform/notebooks/docs/use-r-bigquery
 
 ### 1. Importing and cleaning the CRS dataset from the OECD
 
-```{r}
+```{r crs import}
 ##Import CRS data
 
 #get the list of CRS csv files using file name patterns of the CRS data files
@@ -174,7 +174,7 @@ rm(crs_data)
 
 
 
-```{r}
+```{r clean crs}
 
 ## Clean CRS data
   #Note: the warning for countrycode() shows that the unmatched "countries" are only very small islands/territories or non-country entities (regions, donor organizations)
@@ -265,7 +265,7 @@ rm(crspanel)
 ### 2. Importing and cleaning the Ideal Points Dataset
 
 
-```{r}
+```{r ideal points}
 
 ## Import Ideal Points data
 ideal_points <- read.table("./raw_data/unga/Dyadicdata.tab",
@@ -320,7 +320,7 @@ Because I did this analysis twice - first for ORGB 708 and then for my MA essay 
 
 Start of ORGB 708 code
 
-```{r}
+```{r controls index}
 
 
 

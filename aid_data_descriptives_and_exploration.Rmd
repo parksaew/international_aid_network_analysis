@@ -10,7 +10,9 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 
 pacman::p_load(tidyverse,
-               corrplot)
+               corrplot,
+               shiny,
+               Amelia)
 
 
 ```
@@ -60,7 +62,8 @@ summary(merged_dyadic)
 numeric_dyadic <- merged_dyadic %>%
   ungroup() %>% #ungrouping because I won't necessarily use ccodes for plotting
   select_at(c(vars(-matches("(_(\\d)+|_lag|_log|_squared|_corrected|_fd|_sum)$")),
-              vars(-matches("^(commit_|distw)"))))
+              vars(-matches("^(commit_|distw)")))) %>%
+  mutate(dyad_name = paste0(d_country, " - ", r_country)) #create human-readable dyad names
 
 #corrplot
 corr_all_merged <- cor(select(numeric_dyadic, #cor object to feed into corrplot
@@ -70,7 +73,8 @@ corr_all_merged <- cor(select(numeric_dyadic, #cor object to feed into corrplot
                                  d_country,
                                  r_region,
                                  d_region,
-                                 dyad_id)), 
+                                 dyad_id,
+                                 dyad_name)), 
                        use = "pairwise.complete.obs")
 
 
@@ -90,12 +94,12 @@ corrplot(corr_all_merged,
 
 #transforming the df so that I can facet by the numeric variables
 merged_dyadic_plot <- numeric_dyadic %>%
-  mutate(dyad_name = paste0(d_country, " - ", r_country)) %>% #create human-readable dyad names
   select(-c(ccode1, #remove non-numeric vars except for dyad_name and (d_/r_)region
             ccode2,
             r_country,
             d_country,
-            dyad_id)) %>%
+            dyad_id,
+            deflator)) %>%
   pivot_longer(-c(dyad_name,
                   year,
                   r_region,
@@ -111,10 +115,10 @@ merged_dyadic_plot <- numeric_dyadic %>%
 
 #checking that the faceted plot works by using a sample (because the whole data is very big)
 merged_dyadic_plot_sample <- merged_dyadic_plot %>%
-  filter(d_region == "North America")
+  filter(d_region == "Europe & Central Asia")
   
   
-trendline_exploratory_sample <- ggplot(merged_dyadic_plot_sample) +
+trendline_exploratory_sample_gplot <- ggplot(merged_dyadic_plot_sample) +
   geom_line(aes(x = year,
                 y = value,
                 color = dyad_name)) +
@@ -123,23 +127,71 @@ trendline_exploratory_sample <- ggplot(merged_dyadic_plot_sample) +
   theme_bw() + 
   theme(legend.position = "none") 
 
-trendline_exploratory_sample
+trendline_exploratory_sample_gplot
+
 
 #I think some variables need to be points or other visualizations
+#I think donor and recipient and dyadic variables should be in separate sections (for donor and recipient they can be compared next to each other)
 
-
+#I think it may be a good idea to show some trendlines as a mini dashboard 
+  # Goal: See and explore the trends and relationship between economic factors and aid by regions.
 ```
-
-
-
 
 
 ```{r missing data}
 
-
 #missing data distribution (amelia)
 
+numeric_dyadic_amelia <- amelia(x = numeric_dyadic %>%
+                                  select(-c(r_country,
+                                            d_country,
+                                            r_region,
+                                            d_region,
+                                            dyad_id)),
+                                ts = "year",
+                                cs = "dyad_name")
+
+missmap(numeric_dyadic)
+
 ```
+
+
+
+
+```{r econ mini dash}
+
+#first mini dashboard for trendlines
+
+# donor vars: d_pop, d_rgdpe_per_capita, d_unemployment
+# recipient: r_pop, r_rdgde_per_capita, r_unemployment
+# aid vars: disburse_*_aid
+# customizable variables: year range, donor region, recipient region
+
+
+#donor vars
+econ_dash_donor <- merged_dyadic_plot %>%
+  filter(numeric_var %in% c("d_pop",
+                            "d_rgdpe_per_capita",
+                            "d_unemployment")) 
+
+econ_dash_donor_gplot <- ggplot(econ_dash_donor) +
+  geom_line(aes(x = year,
+                y = value,
+                color = dyad_name)) +
+  facet_wrap(~ numeric_var,
+             scales = "free_y") +
+  theme_bw() + 
+  theme(legend.position = "none") 
+
+econ_dash_donor_gplot
+
+
+```
+
+
+
+
+
 
 
 
