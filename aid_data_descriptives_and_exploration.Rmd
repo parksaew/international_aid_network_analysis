@@ -159,9 +159,13 @@ gg_miss_fct(numeric_dyadic %>%
                        vars(year))),
            year) + #I love this
   labs(title = "Missing data in recipient-side variables")
+  
 
 
- 
+
+#Insights:
+  # around 1990 is the cutoff where is a significant change in the level of missing data
+  # unemployment has 0 data before 1990s -> we may need a better source
 
 ```
 
@@ -176,13 +180,20 @@ gg_miss_fct(numeric_dyadic %>%
 # recipient: r_pop, r_rdgde_per_capita, r_unemployment
 # aid vars: disburse_*_aid
 # customizable variables: year range, donor region, recipient region
+# nice to have
+    # important dates on timeline (ex- 9/11)
+
+
+#due to missing data (especially for unemployment) before 1990s, let's set the year range to 1991
+  #if unemployment and trade missing data are fixed (by funding different datasets, we can increase the range)
 
 
 #donor vars
 econ_dash_donor <- merged_dyadic_plot %>%
   filter(numeric_var %in% c("d_pop",
                             "d_rgdpe_per_capita",
-                            "d_unemployment")) 
+                            "d_unemployment") &
+           year %in% c(1991:2015)) #years where most variable have data (also cuts data size by around 40%)
 
 econ_dash_donor_gplot <- ggplot(econ_dash_donor) +
   geom_line(aes(x = year,
@@ -194,6 +205,44 @@ econ_dash_donor_gplot <- ggplot(econ_dash_donor) +
   theme(legend.position = "none") 
 
 econ_dash_donor_gplot
+
+
+#recipient vars
+econ_dash_recipient <- merged_dyadic_plot %>%
+  filter(numeric_var %in% c("r_pop",
+                            "r_rgdpe_per_capita",
+                            "r_unemployment") &
+           year %in% c(1991:2015)) #years where most variable have data (also cuts data size by around 40%)
+
+econ_dash_recipient_gplot <- ggplot(econ_dash_recipient) +
+  geom_line(aes(x = year,
+                y = value,
+                color = dyad_name)) +
+  facet_wrap(~ numeric_var,
+             scales = "free_y") +
+  theme_bw() + 
+  theme(legend.position = "none") 
+
+econ_dash_recipient_gplot
+
+
+#dyadic vars
+econ_dash_dyadic <- merged_dyadic_plot %>%
+  filter(grepl("disburse_.+_aid", 
+               numeric_var) &
+           year %in% c(1991:2015)) #years where most variable have data (also cuts data size by around 40%)
+
+econ_dash_dyadic_gplot <- ggplot(econ_dash_dyadic) +
+  geom_line(aes(x = year,
+                y = value,
+                color = dyad_name)) +
+  facet_wrap(~ numeric_var,
+             scales = "free_y") +
+  theme_bw() + 
+  theme(legend.position = "none") 
+
+econ_dash_dyadic_gplot
+
 
 
 ```
