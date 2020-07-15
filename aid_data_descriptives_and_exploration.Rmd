@@ -227,10 +227,16 @@ gg_miss_fct(numeric_dyadic %>%
 
 #donor vars
 econ_dash_donor <- merged_dyadic_plot %>%
+  select(year,
+         d_country,
+         d_region,
+         numeric_var,
+         value) %>%
   filter(numeric_var %in% c("d_pop",
                             "d_rgdpe_per_capita",
                             "d_unemployment") &
-           year %in% c(1991:2015)) #years where most variable have data (also cuts data size by around 40%)
+           year %in% c(1991:2015)) %>% #years where most variable have data (also cuts data size by around 40%)
+  distinct()
 
 econ_dash_donor_gplot <- ggplot(econ_dash_donor) +
   geom_line(aes(x = year,
@@ -246,10 +252,16 @@ econ_dash_donor_gplot
 
 #recipient vars
 econ_dash_recipient <- merged_dyadic_plot %>%
+  select(year,
+         r_country,
+         r_region,
+         numeric_var,
+         value) %>%
   filter(numeric_var %in% c("r_pop",
                             "r_rgdpe_per_capita",
                             "r_unemployment") &
-           year %in% c(1991:2015)) #years where most variable have data (also cuts data size by around 40%)
+           year %in% c(1991:2015)) %>% #years where most variable have data (also cuts data size by around 40%)
+  distinct()
 
 econ_dash_recipient_gplot <- ggplot(econ_dash_recipient) +
   geom_line(aes(x = year,
@@ -283,6 +295,60 @@ econ_dash_dyadic_gplot <- ggplot(econ_dash_dyadic) +
 econ_dash_dyadic_gplot
 
 
+#dyadic vars - summarized into regions (to make it lighter)
+
+econ_dash_dyadic_region <- econ_dash_dyadic %>% 
+  select(year,
+         r_region,
+         d_region,
+         numeric_var,
+         value) %>%
+  filter(!(is.na(r_region) | is.na(d_region))) %>%
+  mutate(region_dyad = paste0(d_region, " - ", r_region)) %>%
+  group_by(year,
+           r_region,
+           d_region,
+           region_dyad,
+           numeric_var) %>%
+  summarise(value = sum(value)) 
+
+econ_dash_dyadic_region_gplot <- ggplot(econ_dash_dyadic_region) +
+  geom_line(aes(x = year,
+                y = value,
+                group = region_dyad, #group splits the data like color or fill but does not apply additional visual differentiation
+                color = r_region)) + 
+  facet_wrap(~ numeric_var,
+             scales = "free_y") +
+  theme_bw() 
+
+econ_dash_dyadic_region_gplot
+
+
+
+```
+
+
+```{r shiny functions}
+
+#new functions to limit min/max date views
+  #source: https://stackoverflow.com/questions/31152960/display-only-months-in-daterangeinput-or-dateinput-for-a-shiny-app-r-programmin
+
+dateInput2 <- function(inputId, label, minview = "days", maxview = "decades", ...) {
+  d <- shiny::dateInput(inputId, label, ...)
+  d$children[[2L]]$attribs[["data-date-min-view-mode"]] <- minview
+  d$children[[2L]]$attribs[["data-date-max-view-mode"]] <- maxview
+  d
+}
+
+dateRangeInput2 <- function(inputId, label, minview = "days", maxview = "decades", ...) {
+  d <- shiny::dateRangeInput(inputId, label, ...)
+  d$children[[2L]]$children[[1]]$attribs[["data-date-min-view-mode"]] <- minview
+  d$children[[2L]]$children[[3]]$attribs[["data-date-min-view-mode"]] <- minview
+  d$children[[2L]]$children[[1]]$attribs[["data-date-max-view-mode"]] <- maxview
+  d$children[[2L]]$children[[3]]$attribs[["data-date-max-view-mode"]] <- maxview
+  d
+}
+
 
 ```
 
@@ -315,55 +381,55 @@ ui <- fluidPage(
   #app title 
   titlePanel("Economic Trends and Aid Distribution"),
   
-  #sidebar layout with input and output definitions 
-  sidebarLayout(
-    
-    #sidebar panel for inputs ----
-    sidebarPanel(
-      h4("Dashboard Parameters"),
-      
-      #input: date range for the years to be shown
-      dateRangeInput(inputId = "yearRange",
-                     label = "Year range:",
-                     start = "1991-01-01",
-                     end = "2016-12-31",
-                     min = "1991-01-01",
-                     max = "2016-12-31",
-                     format = "yyyy",
-                     startview = "decade"
-                     ),
-      
-      selectInput(inputId = "recipientRegion",
-                  label = "Recipient country region:",
-                  choices = c("All regions",
-                              na.omit(unique(econ_dash_recipient$r_region))),
-                  selected = "All regions"),
-      
-      selectInput(inputId = "donorRegion",
-                  label = "Donor country region:",
-                  choices = c("All regions",
-                              na.omit(unique(econ_dash_donor$d_region))),
-                  selected = "All regions"),
-      width = 2.5
+  fluidRow(
+    column(3,
+           h4("Dashboard Parameters"),
+           
+           #input: date range for the years to be shown
+           dateRangeInput2(inputId = "yearRange",
+                          label = "Year range:",
+                          start = "1991-01-01",
+                          end = "2016-12-31",
+                          min = "1991-01-01",
+                          max = "2016-12-31",
+                          format = "yyyy",
+                          startview = "decade",
+                          minview = "decade"
+                          ),
+           
+           selectInput(inputId = "recipientRegion",
+                       label = "Recipient country region:",
+                       choices = c("All regions",
+                                   na.omit(unique(econ_dash_recipient$r_region))),
+                       selected = "All regions"),
+           
+           selectInput(inputId = "donorRegion",
+                       label = "Donor country region:",
+                       choices = c("All regions",
+                                   na.omit(unique(econ_dash_donor$d_region))),
+                       selected = "All regions")
+           ),
+    column(9,
+           h3("International Aid Trends by Type"),
+           
+           radioButtons(inputId = "aidColor",
+                        label = "Label/color by:",
+                        choices = list("Recipient region" = "r_region",
+                                       "Donor region" = "d_region")),
+           
+           plotOutput(outputId = "aidTrends")
+           )
     ),
-    
-    #main panel for displaying outputs
-    mainPanel(
-      h3("International Aid Trends by Type"),
-      
-      #output is a plot
-      plotOutput(outputId = "aidTrends"),
-      br(),
-      h3("Economic Trends"),
-      plotOutput(outputId = "recipientTrends"),
-      plotOutput(outputId = "donorTrends")
-      
-    )
-  )
+  
+  h3("Economic Trends"),
+  plotOutput(outputId = "recipientTrends",
+             height = "200px"),
+  plotOutput(outputId = "donorTrends",
+             height = "200px")
 )
+  
 
 server = function(input, output) {
-  
   
   #creating reactive variables to change x axis limits (years)
   yearStart <- reactive({
@@ -379,8 +445,6 @@ server = function(input, output) {
              "%Y") %>%
       as.numeric(.)
   })
-  
-  
     
 
   #renderPlot is used to indicate that: 
@@ -389,25 +453,38 @@ server = function(input, output) {
   output$aidTrends <- renderPlot({ #this takes forever to load
     
     if (input$recipientRegion != "All regions") { #applying region filters
-      econ_dash_dyadic <- econ_dash_dyadic %>%
+      econ_dash_dyadic_region <- econ_dash_dyadic_region %>%
         filter(r_region == input$recipientRegion)
     }
     
     if (input$donorRegion != "All regions") {
-      econ_dash_dyadic <- econ_dash_dyadic %>%
+      econ_dash_dyadic_region <- econ_dash_dyadic_region %>%
         filter(d_region == input$donorRegion)
     } 
-
-    aidTrendsGG <- ggplot(econ_dash_dyadic) +
+    
+    if (input$aidColor == "r_region") {
+    aidTrendsGG <- ggplot(econ_dash_dyadic_region) +
       geom_line(aes(x = year,
                     y = value,
-                    group = dyad_name, #group splits the data like color or fill but does not apply additional visual differentiation
-                    color = r_region)) +
-       xlim(yearStart(),
-            yearEnd()) +
+                    group = region_dyad, #group splits the data like color or fill but does not apply additional visual differentiation
+                    color = r_region)) + 
+      xlim(yearStart(),
+           yearEnd()) +
       facet_wrap(~ numeric_var,
                  scales = "free_y") +
-      theme_bw()
+      theme_bw() 
+    } else {
+    aidTrendsGG <- ggplot(econ_dash_dyadic_region) +
+      geom_line(aes(x = year,
+                    y = value,
+                    group = region_dyad, #group splits the data like color or fill but does not apply additional visual differentiation
+                    color = d_region)) + 
+      xlim(yearStart(),
+           yearEnd()) +
+      facet_wrap(~ numeric_var,
+                 scales = "free_y") +
+      theme_bw() 
+    }
     aidTrendsGG
   })
   
@@ -430,9 +507,8 @@ server = function(input, output) {
       theme_bw() + 
       theme(legend.position = "none") 
     recipientTrendsGG
-  },
-  height = 200) #might be better to set height in the ui side
-
+  }) 
+  
   output$donorTrends <- renderPlot({
     
     if (input$donorRegion != "All regions") { #applying region filters
@@ -452,8 +528,7 @@ server = function(input, output) {
       theme_bw() + 
       theme(legend.position = "none") 
     donorTrendsGG
-  },
-  height = 200)
+  })
 
 }
 
