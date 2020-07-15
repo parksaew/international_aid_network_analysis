@@ -290,7 +290,24 @@ econ_dash_dyadic_gplot
 
 ```{r econ mini dash}
 
-#reference: https://shiny.rstudio.com/tutorial/written-tutorial/lesson1/
+#first mini dashboard for trendlines
+
+# donor vars: d_pop, d_rgdpe_per_capita, d_unemployment
+# recipient: r_pop, r_rdgde_per_capita, r_unemployment
+  # remember that (r_/d_)pop are not logged and in millions
+# aid vars: disburse_*_aid
+  # be able choose to visually group by donor or recipient region
+# customizable variables: year range, donor region, recipient region
+# nice to have
+    # important dates on timeline (ex- 9/11)
+    # show country/dyad name on hover (maybe a must have)
+#due to missing data (especially for unemployment) before 1990s, let's set the year range to 1991
+  #if unemployment and trade missing data are fixed (by funding different datasets, we can increase the range)
+
+#reference: 
+  #https://shiny.rstudio.com/tutorial/written-tutorial/lesson1/
+  #https://shiny.rstudio.com/articles/layout-guide.html
+  #shiny's gallery for each function is helpful
 
 #define UI for an app that draws economic and aid trend graphs
 ui <- fluidPage(
@@ -303,64 +320,155 @@ ui <- fluidPage(
     
     #sidebar panel for inputs ----
     sidebarPanel(
+      h4("Dashboard Parameters"),
       
       #input: date range for the years to be shown
-      sliderInput(
-        inputId = "yearRange",
-        label = "Year range:",
-        min = 1991,
-        max = 2016,
-        value = c(1991,2016)
-      )
+      dateRangeInput(inputId = "yearRange",
+                     label = "Year range:",
+                     start = "1991-01-01",
+                     end = "2016-12-31",
+                     min = "1991-01-01",
+                     max = "2016-12-31",
+                     format = "yyyy",
+                     startview = "decade"
+                     ),
+      
+      selectInput(inputId = "recipientRegion",
+                  label = "Recipient country region:",
+                  choices = c("All regions",
+                              na.omit(unique(econ_dash_recipient$r_region))),
+                  selected = "All regions"),
+      
+      selectInput(inputId = "donorRegion",
+                  label = "Donor country region:",
+                  choices = c("All regions",
+                              na.omit(unique(econ_dash_donor$d_region))),
+                  selected = "All regions"),
+      width = 2.5
     ),
     
     #main panel for displaying outputs
     mainPanel(
+      h3("International Aid Trends by Type"),
+      
       #output is a plot
-      plotOutput(outputId = "aidTrends")
-      #textOutput("test")
+      plotOutput(outputId = "aidTrends"),
+      br(),
+      h3("Economic Trends"),
+      plotOutput(outputId = "recipientTrends"),
+      plotOutput(outputId = "donorTrends")
+      
     )
   )
 )
 
 server = function(input, output) {
   
-
   
-
-  #create a reactive dataset to use in the ggplot
-  econ_dash_dyadic <- reactive({
-    merged_dyadic_plot %>%
-      filter(grepl("disburse_.+_aid",
-                   numeric_var) &
-               numeric_var != "disburse_other_aid" &
-               year >= input$yearRange[1] &
-               year <= input$yearRange[2]) 
+  #creating reactive variables to change x axis limits (years)
+  yearStart <- reactive({
+    input$yearRange[1] %>%
+      format(.,
+             "%Y") %>%
+      as.numeric(.)
+    })
+    
+  yearEnd <- reactive({
+    input$yearRange[2] %>%
+      format(.,
+             "%Y") %>%
+      as.numeric(.)
   })
   
+  
+    
+
   #renderPlot is used to indicate that: 
     #1. the output is of the plot type
     #2. it is "reactive" and therefore should be automatically re-executed when inputs change
-  output$aidTrends <- renderPlot({
-    aidTrendsGG <- ggplot(econ_dash_dyadic()) +
+  output$aidTrends <- renderPlot({ #this takes forever to load
+    
+    if (input$recipientRegion != "All regions") { #applying region filters
+      econ_dash_dyadic <- econ_dash_dyadic %>%
+        filter(r_region == input$recipientRegion)
+    }
+    
+    if (input$donorRegion != "All regions") {
+      econ_dash_dyadic <- econ_dash_dyadic %>%
+        filter(d_region == input$donorRegion)
+    } 
+
+    aidTrendsGG <- ggplot(econ_dash_dyadic) +
       geom_line(aes(x = year,
                     y = value,
                     group = dyad_name, #group splits the data like color or fill but does not apply additional visual differentiation
                     color = r_region)) +
+       xlim(yearStart(),
+            yearEnd()) +
       facet_wrap(~ numeric_var,
                  scales = "free_y") +
       theme_bw()
     aidTrendsGG
   })
+  
+  output$recipientTrends <- renderPlot({
+    
+    if (input$recipientRegion != "All regions") { #applying region filters
+      econ_dash_recipient <- econ_dash_recipient %>%
+        filter(r_region == input$recipientRegion)
+    }
+    
+    recipientTrendsGG <- ggplot(econ_dash_recipient) +
+      geom_line(aes(x = year,
+                    y = value,
+                    group = r_country,
+                    color = r_region)) +
+      xlim(yearStart(),
+           yearEnd()) +
+      facet_wrap(~ numeric_var,
+                 scales = "free_y") +
+      theme_bw() + 
+      theme(legend.position = "none") 
+    recipientTrendsGG
+  },
+  height = 200) #might be better to set height in the ui side
+
+  output$donorTrends <- renderPlot({
+    
+    if (input$donorRegion != "All regions") { #applying region filters
+      econ_dash_donor <- econ_dash_donor %>%
+        filter(d_region == input$donorRegion)
+    } 
+    
+    donorTrendsGG <- ggplot(econ_dash_donor) +
+      geom_line(aes(x = year,
+                    y = value,
+                    group = d_country,
+                    color = d_region)) +
+      xlim(yearStart(),
+           yearEnd()) +
+      facet_wrap(~ numeric_var,
+                 scales = "free_y") +
+      theme_bw() + 
+      theme(legend.position = "none") 
+    donorTrendsGG
+  },
+  height = 200)
+
 }
 
 shinyApp(ui = ui, server = server)
 
 
+
+
 ```
 
+Hosting Shiny on sites:
 
+  1. https://shiny.rstudio.com/tutorial/written-tutorial/lesson7/#:~:text=The%20easiest%20way%20to%20turn,app%20including%20server%20administration%20tools.
 
+  2. (Use Google account) https://www.shinyapps.io/admin/#/dashboard 
 
 
 ## Plots for map dashboard
