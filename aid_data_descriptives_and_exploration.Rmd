@@ -235,8 +235,25 @@ econ_dash_donor <- merged_dyadic_plot %>%
   filter(numeric_var %in% c("d_pop",
                             "d_rgdpe_per_capita",
                             "d_unemployment") &
+           !is.na(d_region) &
            year %in% c(1991:2015)) %>% #years where most variable have data (also cuts data size by around 40%)
-  distinct()
+  mutate(numeric_var = case_when(numeric_var == "d_pop" ~ "Population (in millions)",
+                                 numeric_var == "d_rgdpe_per_capita" ~ "GDP per capita (in constant USD)",
+                                 numeric_var == "d_unemployment" ~ "Unemployment (%)"),
+         d_region = factor(d_region,
+                           levels = c("East Asia & Pacific",
+                                      "Europe & Central Asia",
+                                      "Latin America & Caribbean",
+                                      "Middle East & North Africa",
+                                      "South Asia",
+                                      "Sub-Saharan Africa",
+                                      "North America"))) %>%
+  distinct() %>%
+  group_by(year,
+           d_region,
+           numeric_var) %>%
+  summarise(value = sum(value,
+                        na.rm = T)) 
 
 econ_dash_donor_gplot <- ggplot(econ_dash_donor) +
   geom_line(aes(x = year,
@@ -247,7 +264,7 @@ econ_dash_donor_gplot <- ggplot(econ_dash_donor) +
   theme_bw() + 
   theme(legend.position = "none") 
 
-econ_dash_donor_gplot
+#econ_dash_donor_gplot
 
 
 #recipient vars
@@ -260,8 +277,25 @@ econ_dash_recipient <- merged_dyadic_plot %>%
   filter(numeric_var %in% c("r_pop",
                             "r_rgdpe_per_capita",
                             "r_unemployment") &
+           !is.na(r_region) &
            year %in% c(1991:2015)) %>% #years where most variable have data (also cuts data size by around 40%)
-  distinct()
+  mutate(numeric_var = case_when(numeric_var == "r_pop" ~ "Population (in millions)",
+                                 numeric_var == "r_rgdpe_per_capita" ~ "GDP per capita (in constant USD)",
+                                 numeric_var == "r_unemployment" ~ "Unemployment (%)"),
+         r_region = factor(r_region,
+                           levels = c("East Asia & Pacific",
+                                      "Europe & Central Asia",
+                                      "Latin America & Caribbean",
+                                      "Middle East & North Africa",
+                                      "South Asia",
+                                      "Sub-Saharan Africa",
+                                      "North America"))) %>%
+  distinct() %>%
+  group_by(year,
+           r_region,
+           numeric_var) %>%
+  summarise(value = sum(value,
+                        na.rm = T)) 
 
 econ_dash_recipient_gplot <- ggplot(econ_dash_recipient) +
   geom_line(aes(x = year,
@@ -273,7 +307,7 @@ econ_dash_recipient_gplot <- ggplot(econ_dash_recipient) +
   theme_bw() + 
   theme(legend.position = "none") 
 
-econ_dash_recipient_gplot
+#econ_dash_recipient_gplot
 
 
 #dyadic vars
@@ -281,7 +315,13 @@ econ_dash_dyadic <- merged_dyadic_plot %>%
   filter(grepl("disburse_.+_aid", 
                numeric_var) &
            numeric_var != "disburse_other_aid" &
-           year %in% c(1991:2015)) #years where most variable have data (also cuts data size by around 40%)
+           year %in% c(1991:2015)) %>% #years where most variable have data (also cuts data size by around 40%)
+  mutate(numeric_var = case_when(numeric_var == "disburse_democracy_aid" ~ "Democracy Aid",
+                                 numeric_var == "disburse_econ_capacity_aid" ~ "Economic Capacity Aid",
+                                 numeric_var == "disburse_social_aid" ~ "Social Aid",
+                                 numeric_var == "disburse_disaster_aid" ~ "Disaster Aid",
+                                 numeric_var == "disburse_production_aid" ~ "Production Aid",
+                                 numeric_var == "disburse_program_aid" ~ "Program Aid")) 
 
 econ_dash_dyadic_gplot <- ggplot(econ_dash_dyadic) +
   geom_line(aes(x = year,
@@ -292,7 +332,7 @@ econ_dash_dyadic_gplot <- ggplot(econ_dash_dyadic) +
              scales = "free_y") +
   theme_bw() 
 
-econ_dash_dyadic_gplot
+#econ_dash_dyadic_gplot
 
 
 #dyadic vars - summarized into regions (to make it lighter)
@@ -304,7 +344,23 @@ econ_dash_dyadic_region <- econ_dash_dyadic %>%
          numeric_var,
          value) %>%
   filter(!(is.na(r_region) | is.na(d_region))) %>%
-  mutate(region_dyad = paste0(d_region, " - ", r_region)) %>%
+  mutate(region_dyad = paste0(d_region, " to ", r_region),
+         r_region = factor(r_region,
+                           levels = c("East Asia & Pacific",
+                                      "Europe & Central Asia",
+                                      "Latin America & Caribbean",
+                                      "Middle East & North Africa",
+                                      "South Asia",
+                                      "Sub-Saharan Africa",
+                                      "North America")),
+         d_region = factor(d_region,
+                           levels = c("East Asia & Pacific",
+                                      "Europe & Central Asia",
+                                      "Latin America & Caribbean",
+                                      "Middle East & North Africa",
+                                      "South Asia",
+                                      "Sub-Saharan Africa",
+                                      "North America"))) %>%
   group_by(year,
            r_region,
            d_region,
@@ -321,7 +377,17 @@ econ_dash_dyadic_region_gplot <- ggplot(econ_dash_dyadic_region) +
              scales = "free_y") +
   theme_bw() 
 
-econ_dash_dyadic_region_gplot
+#econ_dash_dyadic_region_gplot
+
+
+#setting my own colors for each region (using Set1 colors)
+region_cols <- c(`East Asia & Pacific` = "#E41A1C",
+                 `Europe & Central Asia` = "#377EB8",
+                 `Latin America & Caribbean` = "#4DAF4A",
+                 `Middle East & North Africa` = "#984EA3",
+                 `South Asia` = "#FF7F00",
+                 `Sub-Saharan Africa` = "#E7298A",
+                 `North America` = "#A65628")
 
 
 
@@ -353,27 +419,28 @@ dateRangeInput2 <- function(inputId, label, minview = "days", maxview = "decades
 ```
 
 
+####first mini dashboard for trendlines
+
+- donor vars: d_pop, d_rgdpe_per_capita, d_unemployment
+- recipient: r_pop, r_rdgde_per_capita, r_unemployment
+  - remember that (r_/d_)pop are not logged and in millions
+- aid vars: disburse_*_aid
+  - be able choose to visually group by donor or recipient region
+- customizable variables: year range, donor region, recipient region
+- nice to have
+    - important dates on timeline (ex- 9/11)
+    - show country/dyad name on hover (maybe a must have)
+-due to missing data (especially for unemployment) before 1990s, let's set the year range to 1991
+  -if unemployment and trade missing data are fixed (by funding different datasets, we can increase the range)
+
+-reference: 
+  -https://shiny.rstudio.com/tutorial/written-tutorial/lesson1/
+  -https://shiny.rstudio.com/articles/layout-guide.html
+  -shiny's gallery for each function is helpful
+
 
 ```{r econ mini dash}
 
-#first mini dashboard for trendlines
-
-# donor vars: d_pop, d_rgdpe_per_capita, d_unemployment
-# recipient: r_pop, r_rdgde_per_capita, r_unemployment
-  # remember that (r_/d_)pop are not logged and in millions
-# aid vars: disburse_*_aid
-  # be able choose to visually group by donor or recipient region
-# customizable variables: year range, donor region, recipient region
-# nice to have
-    # important dates on timeline (ex- 9/11)
-    # show country/dyad name on hover (maybe a must have)
-#due to missing data (especially for unemployment) before 1990s, let's set the year range to 1991
-  #if unemployment and trade missing data are fixed (by funding different datasets, we can increase the range)
-
-#reference: 
-  #https://shiny.rstudio.com/tutorial/written-tutorial/lesson1/
-  #https://shiny.rstudio.com/articles/layout-guide.html
-  #shiny's gallery for each function is helpful
 
 #define UI for an app that draws economic and aid trend graphs
 ui <- fluidPage(
@@ -389,9 +456,9 @@ ui <- fluidPage(
            dateRangeInput2(inputId = "yearRange",
                           label = "Year range:",
                           start = "1991-01-01",
-                          end = "2016-12-31",
+                          end = "2015-12-31",
                           min = "1991-01-01",
-                          max = "2016-12-31",
+                          max = "2015-12-31",
                           format = "yyyy",
                           startview = "decade",
                           minview = "decade"
@@ -467,25 +534,25 @@ server = function(input, output) {
       geom_line(aes(x = year,
                     y = value,
                     group = region_dyad, #group splits the data like color or fill but does not apply additional visual differentiation
-                    color = r_region)) + 
-      xlim(yearStart(),
-           yearEnd()) +
-      facet_wrap(~ numeric_var,
-                 scales = "free_y") +
-      theme_bw() 
+                    color = r_region)) 
     } else {
     aidTrendsGG <- ggplot(econ_dash_dyadic_region) +
       geom_line(aes(x = year,
                     y = value,
                     group = region_dyad, #group splits the data like color or fill but does not apply additional visual differentiation
-                    color = d_region)) + 
+                    color = d_region))
+    }
+    
+    aidTrendsGG + 
       xlim(yearStart(),
            yearEnd()) +
       facet_wrap(~ numeric_var,
                  scales = "free_y") +
+      labs(color = "Regions") +
+      scale_color_manual(values = region_cols,
+                         drop = F) + 
       theme_bw() 
-    }
-    aidTrendsGG
+      
   })
   
   output$recipientTrends <- renderPlot({
@@ -498,12 +565,13 @@ server = function(input, output) {
     recipientTrendsGG <- ggplot(econ_dash_recipient) +
       geom_line(aes(x = year,
                     y = value,
-                    group = r_country,
+                    group = r_region,
                     color = r_region)) +
       xlim(yearStart(),
            yearEnd()) +
       facet_wrap(~ numeric_var,
                  scales = "free_y") +
+      scale_color_manual(values = region_cols) +
       theme_bw() + 
       theme(legend.position = "none") 
     recipientTrendsGG
@@ -519,12 +587,13 @@ server = function(input, output) {
     donorTrendsGG <- ggplot(econ_dash_donor) +
       geom_line(aes(x = year,
                     y = value,
-                    group = d_country,
+                    group = d_region,
                     color = d_region)) +
       xlim(yearStart(),
            yearEnd()) +
       facet_wrap(~ numeric_var,
                  scales = "free_y") +
+      scale_color_manual(values = region_cols) +
       theme_bw() + 
       theme(legend.position = "none") 
     donorTrendsGG
