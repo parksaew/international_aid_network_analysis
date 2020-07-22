@@ -448,52 +448,46 @@ ui <- fluidPage(
   #app title 
   titlePanel("Economic Trends and Aid Distribution"),
   
-  fluidRow(
-    column(3,
-           h4("Dashboard Parameters"),
-           
-           #input: date range for the years to be shown
-           dateRangeInput2(inputId = "yearRange",
-                          label = "Year range:",
-                          start = "1991-01-01",
-                          end = "2015-12-31",
-                          min = "1991-01-01",
-                          max = "2015-12-31",
-                          format = "yyyy",
-                          startview = "decade",
-                          minview = "decade"
-                          ),
-           
-           selectInput(inputId = "recipientRegion",
-                       label = "Recipient country region:",
-                       choices = c("All regions",
-                                   na.omit(unique(econ_dash_recipient$r_region))),
-                       selected = "All regions"),
-           
-           selectInput(inputId = "donorRegion",
-                       label = "Donor country region:",
-                       choices = c("All regions",
-                                   na.omit(unique(econ_dash_donor$d_region))),
-                       selected = "All regions")
-           ),
-    column(9,
-           h3("International Aid Trends by Type"),
-           
-           radioButtons(inputId = "aidColor",
-                        label = "Label/color by:",
-                        choices = list("Recipient region" = "r_region",
-                                       "Donor region" = "d_region")),
-           
-           plotOutput(outputId = "aidTrends")
-           )
-    ),
-  
-  h3("Economic Trends"),
-  plotOutput(outputId = "recipientTrends",
-             height = "200px"),
-  plotOutput(outputId = "donorTrends",
-             height = "200px")
+  sidebarLayout(
+    sidebarPanel(
+      h4("Dashboard Parameters"),
+      
+      #input: date range for the years to be shown
+      dateRangeInput2(inputId = "yearRange",
+                      label = "Year range:",
+                      start = "1991-01-01",
+                      end = "2015-12-31",
+                      min = "1991-01-01",
+                      max = "2015-12-31",
+                      format = "yyyy",
+                      startview = "decade",
+                      minview = "decade"
+                      ), 
+      
+      selectInput(inputId = "recipientRegion",
+                  label = "Recipient country region:",
+                  choices = c("All regions",
+                  na.omit(unique(econ_dash_recipient$r_region))),
+                  selected = "All regions"), 
+      
+      selectInput(inputId = "donorRegion",
+                  label = "Donor country region:",
+                  choices = c("All regions",
+                  na.omit(unique(econ_dash_donor$d_region))),
+                  selected = "All regions")), 
+    
+    mainPanel(
+      textOutput("aidTrendsTitle"), 
+
+      plotOutput(outputId = "aidTrends"),
+      
+      h3("Economic Trends"),
+      plotOutput(outputId = "economicTrends", #need to build
+                 height = "200px")
+    )
+  )
 )
+
   
 
 server = function(input, output) {
@@ -513,7 +507,9 @@ server = function(input, output) {
       as.numeric(.)
   })
     
-
+  output$aidTrendsTitle <- paste("Aid Trends by Type: from", input$donorRegion, "to", input$recipientRegion,
+                                 sep = " ")
+  
   #renderPlot is used to indicate that: 
     #1. the output is of the plot type
     #2. it is "reactive" and therefore should be automatically re-executed when inputs change
@@ -608,11 +604,18 @@ shinyApp(ui = ui, server = server)
 
 ```
 
+
+
+
 Hosting Shiny on sites:
 
   1. https://shiny.rstudio.com/tutorial/written-tutorial/lesson7/#:~:text=The%20easiest%20way%20to%20turn,app%20including%20server%20administration%20tools.
 
   2. (Use Google account) https://www.shinyapps.io/admin/#/dashboard 
+  
+  
+Other shiny resource:
+  1. Changing titles dynamically: https://stackoverflow.com/questions/50808905/render-title-in-r-shiny-box-dynamically
 
 
 ## Plots for map dashboard
