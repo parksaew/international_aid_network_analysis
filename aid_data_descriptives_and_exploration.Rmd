@@ -409,7 +409,7 @@ region_cols <- c(`East Asia & Pacific` = "#E41A1C",
 
 ```{r shiny functions}
 
-#new functions to limit min/max date views
+#functions to limit min/max date views
   #source: https://stackoverflow.com/questions/31152960/display-only-months-in-daterangeinput-or-dateinput-for-a-shiny-app-r-programmin
 
 dateInput2 <- function(inputId, label, minview = "days", maxview = "decades", ...) {
@@ -427,6 +427,16 @@ dateRangeInput2 <- function(inputId, label, minview = "days", maxview = "decades
   d$children[[2L]]$children[[3]]$attribs[["data-date-max-view-mode"]] <- maxview
   d
 }
+
+
+
+#function to extract the legend
+  #source: https://stackoverflow.com/questions/48092643/legend-changing-the-size-of-ggplot-figure-in-shiny
+g_legend<-function(a.gplot){ 
+  tmp <- ggplot_gtable(ggplot_build(a.gplot)) 
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box") 
+  legend <- tmp$grobs[[leg]] 
+  return(legend)} 
 
 
 ```
@@ -469,9 +479,9 @@ ui <- fluidPage(
       dateRangeInput2(inputId = "yearRange",
                       label = "Year range:",
                       start = "1991-01-01",
-                      end = "2015-12-31",
+                      end = "2014-12-31",
                       min = "1991-01-01",
-                      max = "2015-12-31",
+                      max = "2014-12-31",
                       format = "yyyy",
                       startview = "decade",
                       minview = "decade"
@@ -490,17 +500,27 @@ ui <- fluidPage(
                   selected = "All regions")), 
     
     mainPanel(
-      textOutput("aidTrendsTitle"), 
-
-      plotOutput(outputId = "aidTrends"),
+      h3(textOutput("aidTrendsTitle")), 
+      
+      fluidRow(
+        column(10,
+               plotOutput(outputId = "aidTrends")),
+        column(2,
+               plotOutput(outputId = "aidTrendsLegend"))
+      ),
       
       h3("Economic Trends"),
       selectInput(inputId = "econMetric",
                   label = "Economic Metric:",
                   choices = na.omit(unique(econ_dash_country$numeric_var)),
                   selected = "GDP per capita (in constant USD)"),
-      plotOutput(outputId = "economicTrends", 
-                 height = "200px")
+      fluidRow(
+        column(10,
+               plotOutput(outputId = "economicTrends", 
+                 height = "200px")),
+        column(2,
+               plotOutput(outputId = "economicTrendsLegend"))
+      )
     )
   )
 )
@@ -530,7 +550,7 @@ server = function(input, output) {
   #renderPlot is used to indicate that: 
     #1. the output is of the plot type
     #2. it is "reactive" and therefore should be automatically re-executed when inputs change
-  output$aidTrends <- renderPlot({ #this takes forever to load
+  output$aidTrends <- renderPlot({ #this takes forever to load if the data is big
     
     
     if (input$recipientRegion != "All regions") { #applying region filters
@@ -543,7 +563,7 @@ server = function(input, output) {
         filter(d_region == input$donorRegion)
     }
     
-    econ_dash_dyadic_region <- econ_dash_dyadic_region %>%
+    econ_dash_dyadic_region <- econ_dash_dyadic_region %>% #*** try moving out these df as reactive() so that the legend plot can use them
       group_by(numeric_var,
                year) %>%
       summarise(value = sum(value)) #summarizing so that there is only on total value for same aid type and year
@@ -560,7 +580,7 @@ server = function(input, output) {
       labs(color = "Aid Type") +
       # scale_color_manual(values = region_cols,
       #                    drop = F) + 
-      theme_bw() 
+      theme_bw()
       
   })
   
@@ -590,7 +610,7 @@ server = function(input, output) {
       xlim(yearStart(),
            yearEnd()) +
       #scale_color_manual(values = region_cols) +
-      theme_bw() + 
+      theme_bw() +
       labs(color = "Country Type")
       
     countryTrendsGG
