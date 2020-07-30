@@ -503,9 +503,9 @@ ui <- fluidPage(
       h3(textOutput("aidTrendsTitle")), 
       
       fluidRow(
-        column(10,
+        column(9,
                plotOutput(outputId = "aidTrends")),
-        column(2,
+        column(3,
                plotOutput(outputId = "aidTrendsLegend"))
       ),
       
@@ -515,11 +515,16 @@ ui <- fluidPage(
                   choices = na.omit(unique(econ_dash_country$numeric_var)),
                   selected = "GDP per capita (in constant USD)"),
       fluidRow(
-        column(10,
+        column(9,
                plotOutput(outputId = "economicTrends", 
                  height = "200px")),
-        column(2,
+        column(3,
                plotOutput(outputId = "economicTrendsLegend"))
+      ),
+      
+      fluidRow(
+        column(12,
+               textOutput("test"))
       )
     )
   )
@@ -543,8 +548,35 @@ server = function(input, output) {
              "%Y") %>%
       as.numeric(.)
   })
+  
+  dyadic_region_filter <- reactive({
+    if (input$recipientRegion != "All regions") { #applying region filters
+      df_filter <- econ_dash_dyadic_region %>%
+        filter(r_region == input$recipientRegion)
+    } else {
+      df_filter <- econ_dash_dyadic_region
+    }
     
-   output$aidTrendsTitle <- renderText({paste("Aid Trends by Type: from", input$donorRegion, "to", input$recipientRegion,
+    if (input$donorRegion != "All regions") {
+      df_filter <- econ_dash_dyadic_region %>%
+        filter(d_region == input$donorRegion)
+    } else {
+      df_filter <- econ_dash_dyadic_region
+    }
+    return(df_filter)
+  })
+  
+  dyadic_region <- reactive({
+    df_region <- dyadic_region_filter() %>%
+      group_by(numeric_var,
+               year) %>%
+      summarise(value = sum(value)) #summarizing so that there is only on total value for same aid type and year
+    return(df_region)
+  })
+  
+    
+  
+  output$aidTrendsTitle <- renderText({paste("Aid Trends by Type: from", input$donorRegion, "to", input$recipientRegion,
                                   sep = " ")})
   
   #renderPlot is used to indicate that: 
@@ -552,37 +584,23 @@ server = function(input, output) {
     #2. it is "reactive" and therefore should be automatically re-executed when inputs change
   output$aidTrends <- renderPlot({ #this takes forever to load if the data is big
     
-    
-    if (input$recipientRegion != "All regions") { #applying region filters
-      econ_dash_dyadic_region <- econ_dash_dyadic_region %>%
-        filter(r_region == input$recipientRegion)
-    }
-    
-    if (input$donorRegion != "All regions") {
-      econ_dash_dyadic_region <- econ_dash_dyadic_region %>%
-        filter(d_region == input$donorRegion)
-    }
-    
-    econ_dash_dyadic_region <- econ_dash_dyadic_region %>% #*** try moving out these df as reactive() so that the legend plot can use them
-      group_by(numeric_var,
-               year) %>%
-      summarise(value = sum(value)) #summarizing so that there is only on total value for same aid type and year
-    
-    aidTrendsGG <- ggplot(econ_dash_dyadic_region) +
+    aidTrendsGG <- ggplot(dyadic_region()) +
       geom_line(aes(x = year,
                     y = value,
                     group = numeric_var, #group splits the data like color or fill but without the visual differentiation
-                    color = numeric_var))
-    
-    aidTrendsGG + 
+                    color = numeric_var)) +
       xlim(yearStart(),
            yearEnd()) +
       labs(color = "Aid Type") +
       # scale_color_manual(values = region_cols,
       #                    drop = F) + 
       theme_bw()
+    
+    aidTrendsGG
       
   })
+  
+  output$test <- renderText(class(dyadic_region()))
   
   output$economicTrends <- renderPlot({
     
